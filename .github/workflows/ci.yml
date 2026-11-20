@@ -18,7 +18,7 @@ jobs:
     name: Linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: ShellCheck
         run: shellcheck install.sh tests/test.sh
       - name: Syntax
@@ -30,7 +30,7 @@ jobs:
     name: macOS
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # /bin/bash is bash 3.2, the version every Mac ships with
       - name: Syntax (bash 3.2)
         run: /bin/bash -n install.sh
@@ -43,7 +43,7 @@ jobs:
     name: Windows
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: PSScriptAnalyzer
         shell: pwsh
         run: |
