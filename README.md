@@ -22,6 +22,10 @@
   <a href="#-uninstall">Uninstall</a>
 </p>
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Demo: the installer suggests a logged-in GitHub account, fills in name and email, shows a quick check; then claude in two folders prints two different GitHub accounts" width="860">
+</p>
+
 ---
 
 ## 🤔 The problem
@@ -87,11 +91,7 @@ After installing, `claude` switches accounts in **both** Command Prompt and Powe
 > [!WARNING]
 > On Windows, **don't** use the macOS / Linux `curl ... | bash` command. `bash` there opens the Linux subsystem (WSL), which fails with *"Windows Subsystem for Linux has no installed distributions"*.
 
-It takes about **3 minutes**. The installer walks you through everything:
-
-<p align="center">
-  <img src="assets/demo.svg" alt="The installer asking for an account nickname, GitHub username, folder, name and email, then showing a quick check" width="760">
-</p>
+It takes about **3 minutes**. The installer walks you through everything (see the demo at the top):
 
 1. It installs anything missing (Git, GitHub CLI, Claude Code).
 2. For each account it asks which **GitHub account** (suggesting ones you're already logged in to), a **nickname** and a **folder**. Your **name and email** are filled in from your GitHub profile.
