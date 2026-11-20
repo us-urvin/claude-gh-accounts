@@ -7,6 +7,8 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/us-urvin/claude-gh-accounts/releases/latest"><img src="https://img.shields.io/github/downloads/us-urvin/claude-gh-accounts/total?label=installs&color=ff7ad9&logo=github" alt="Installs"></a>
+  <a href="https://github.com/us-urvin/claude-gh-accounts/releases/latest"><img src="https://img.shields.io/github/v/release/us-urvin/claude-gh-accounts?color=b892ff" alt="Latest release"></a>
   <a href="https://github.com/us-urvin/claude-gh-accounts/actions/workflows/ci.yml"><img src="https://github.com/us-urvin/claude-gh-accounts/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-8A2BE2" alt="macOS | Linux | Windows">
@@ -55,13 +57,13 @@ Open a terminal, paste **one** line, and answer a few friendly questions.
 **🍎 macOS / 🐧 Linux:** open the **Terminal** app and paste:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.sh | bash
+curl -fsSL https://github.com/us-urvin/claude-gh-accounts/releases/latest/download/install.sh | bash
 ```
 
 **🪟 Windows:** open **PowerShell** (press <kbd>Win</kbd>, type `PowerShell`, press <kbd>Enter</kbd>) and paste:
 
 ```powershell
-irm https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.ps1 | iex
+irm https://github.com/us-urvin/claude-gh-accounts/releases/latest/download/install.ps1 | iex
 ```
 
 <details>
@@ -70,7 +72,7 @@ irm https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.p
 `irm` only works in PowerShell. In Command Prompt, paste this instead:
 
 ```cmd
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/us-urvin/claude-gh-accounts/releases/latest/download/install.ps1 | iex"
 ```
 
 After installing, `claude` switches accounts in **both** Command Prompt and PowerShell.
@@ -94,13 +96,13 @@ It takes about **3 minutes**. The installer walks you through everything:
 <summary><b>Prefer to read the script before running it?</b> (recommended for the security-minded)</summary>
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.sh
+curl -fsSLO https://github.com/us-urvin/claude-gh-accounts/releases/latest/download/install.sh
 less install.sh
 bash install.sh
 ```
 
 ```powershell
-irm https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.ps1 -OutFile install.ps1
+irm https://github.com/us-urvin/claude-gh-accounts/releases/latest/download/install.ps1 -OutFile install.ps1
 notepad install.ps1
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```

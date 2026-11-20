@@ -3,7 +3,7 @@
 # https://github.com/us-urvin/claude-gh-accounts
 #
 # Run:   bash install.sh
-#   or:  curl -fsSL https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.sh | bash
+#   or:  curl -fsSL https://github.com/us-urvin/claude-gh-accounts/releases/latest/download/install.sh | bash
 # Safe to run again any time to add accounts or change folders.
 
 # Everything lives inside main(), called on the last line, so that with "curl | bash"

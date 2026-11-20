@@ -2,7 +2,7 @@
 # https://github.com/us-urvin/claude-gh-accounts
 #
 # Run:   powershell -ExecutionPolicy Bypass -File .\install.ps1
-#   or:  irm https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.ps1 | iex
+#   or:  irm https://github.com/us-urvin/claude-gh-accounts/releases/latest/download/install.ps1 | iex
 # Safe to run again any time to add accounts or change folders.
 #
 # Note for contributors: keep this file pure ASCII. Windows PowerShell 5.1 misreads other

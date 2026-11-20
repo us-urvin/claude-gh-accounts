@@ -1,0 +1,34 @@
+name: Release assets
+
+# Attaches install.sh and install.ps1 to every published release.
+# The README's install commands download them from .../releases/latest/download/,
+# so each install is counted by GitHub (shown by the "downloads" badge).
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  attach:
+    name: Attach installers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - name: Upload install.sh and install.ps1
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ github.event.release.id }}
+        run: |
+          for f in install.sh install.ps1; do
+            # Replace an existing copy (e.g. when re-running this job)
+            old=$(gh api "repos/$REPO/releases/$RELEASE_ID/assets" --jq ".[] | select(.name == \"$f\") | .id")
+            [ -n "$old" ] && gh api -X DELETE "repos/$REPO/releases/assets/$old"
+            # text/plain so "irm ... | iex" and "curl ... | bash" receive plain text
+            gh api -X POST "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=$f" \
+              -H "Content-Type: text/plain; charset=utf-8" --input "$f" --jq '.browser_download_url'
+          done
