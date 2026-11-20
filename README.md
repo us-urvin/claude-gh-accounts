@@ -64,6 +64,18 @@ curl -fsSL https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/in
 irm https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.ps1 | iex
 ```
 
+<details>
+<summary>Using <b>Command Prompt</b> (<code>cmd</code>) instead? Getting <i>"'irm' is not recognized"</i>?</summary>
+
+`irm` only works in PowerShell. In Command Prompt, paste this instead:
+
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.ps1 | iex"
+```
+
+After installing, start `claude` from a **PowerShell** window to get automatic account switching. Git (commits, push, pull) switches accounts in Command Prompt too.
+</details>
+
 It takes about **3 minutes**. The installer walks you through everything:
 
 <p align="center">
