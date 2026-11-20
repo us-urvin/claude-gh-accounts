@@ -9,6 +9,7 @@
 # command can accidentally swallow the rest of the script from stdin).
 main() {
 set -u
+REPO_URL="https://github.com/us-urvin/claude-gh-accounts"
 MAP_FILE="$HOME/.claude-gh-accounts"
 BLOCK_START="# >>> claude-gh-accounts >>>"
 BLOCK_END="# <<< claude-gh-accounts <<<"
@@ -114,7 +115,7 @@ if ! has gh || ! gh_ok_version; then
   esac
   hash -r
 fi
-has gh && gh_ok_version || fail "GitHub CLI 2.40 or newer is needed. See https://cli.github.com, then run this script again."
+{ has gh && gh_ok_version; } || fail "GitHub CLI 2.40 or newer is needed. See https://cli.github.com, then run this script again."
 ok "$(gh --version | head -n1)"
 
 # ---------------------------------------------------------------- Step 4
@@ -130,7 +131,7 @@ else
   info "Installing Claude Code with the official installer..."
   curl -fsSL https://claude.ai/install.sh | bash
   hash -r
-  has claude && claude --version >/dev/null 2>&1 </dev/null || fail "Claude Code didn't install correctly. Copy the messages above and ask for help."
+  { has claude && claude --version >/dev/null 2>&1 </dev/null; } || fail "Claude Code didn't install correctly. Copy the messages above and ask for help."
   ok "Claude Code installed: $(claude --version 2>/dev/null </dev/null | head -n1)"
 fi
 
@@ -143,6 +144,7 @@ printf '  %sIMPORTANT:%s when the browser opens to log in, check it is signed in
 info "RIGHT GitHub account. If not, sign out there first or paste the link in a private window."
 
 # Map file format, one line per account:  folder|github-user|label
+first_run=1; [ -s "$MAP_FILE" ] && first_run=0
 touch "$MAP_FILE"
 if [ -s "$MAP_FILE" ]; then
   info ""; info "Already set up:"
@@ -166,7 +168,7 @@ if [ -s "$MAP_FILE" ]; then ask_yes "Add or update an account now?" y && another
 
 while [ "$another" -eq 1 ]; do
   echo
-  label="$(ask "Short name for this account (e.g. work, personal, client1)" "" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9-')"
+  label="$(ask "Short name for this account (e.g. work, personal, client1)" "" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
   [ -z "$label" ] && { warn "Please use letters or numbers."; continue; }
   user="$(ask "GitHub username for this account" "")"
   if ! printf '%s' "$user" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]{0,38})$'; then
@@ -192,7 +194,7 @@ while [ "$another" -eq 1 ]; do
       if gh auth token --user "$user" >/dev/null 2>&1; then ok "Logged in as $user"; break; fi
       who="$(gh api user --jq .login 2>/dev/null || true)"
       # GitHub usernames aren't case sensitive, but gh stores them exactly as GitHub spells them
-      if [ -n "$who" ] && [ "$(printf '%s' "$who" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$user" | tr 'A-Z' 'a-z')" ]; then
+      if [ -n "$who" ] && [ "$(printf '%s' "$who" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$user" | tr '[:upper:]' '[:lower:]')" ]; then
         user="$who"; ok "Logged in as $user"; break
       fi
       warn "That login was for '${who:-unknown}', not '$user'."
@@ -275,6 +277,7 @@ for rc in "${rc_files[@]}"; do
   tmp="$(mktemp)"
   awk -v s="$BLOCK_START" -v e="$BLOCK_END" '$0==s{skip=1} !skip{print} $0==e{skip=0}' "$rc" > "$tmp" && cat "$tmp" > "$rc"
   rm -f "$tmp"
+  # shellcheck disable=SC2016  # $HOME/$PATH must stay literal: they expand when the rc file runs
   grep -q '.local/bin' "$rc" || printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$rc"
   printf '\n%s\n' "$LAUNCHER" >> "$rc"
   ok "Added to $rc"
@@ -299,6 +302,23 @@ cat <<EOF
   Repos outside these folders keep working exactly as before.
   Run this script again any time to add an account or change a folder.
 EOF
+
+# ---------------------------------------------------------------- Star
+printf '\n  %s* Did this save you time? A GitHub star helps other people find it:%s\n' "$c_yellow" "$c_off"
+info "  $REPO_URL"
+if [ "$first_run" -eq 1 ] && ask_yes "Open it in your browser now?" y; then
+  open_url "$REPO_URL"
+fi
+}
+
+# Open a web page in the default browser, or just print it if there is no browser.
+open_url() {
+  if [ "$(uname -s)" = "Darwin" ] && has open; then open "$1" >/dev/null 2>&1 && return
+  elif has wslview; then wslview "$1" >/dev/null 2>&1 && return
+  elif has xdg-open && { [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; }; then
+    xdg-open "$1" >/dev/null 2>&1 & return
+  fi
+  info "Couldn't open a browser here. Copy the link above instead."
 }
 
 main "$@"

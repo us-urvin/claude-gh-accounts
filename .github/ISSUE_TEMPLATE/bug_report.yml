@@ -1,0 +1,38 @@
+name: Bug report
+description: Something didn't work during install or when switching accounts
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please **remove tokens, emails or anything private** from the output before posting.
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Linux, Windows, WSL]
+    validations:
+      required: true
+  - type: input
+    id: shell
+    attributes:
+      label: Shell and version
+      placeholder: "zsh 5.9 / bash 5.2 / PowerShell 7.4 / Windows PowerShell 5.1"
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Output of `gh --version`, `git --version` and `claude --version`
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Installer output
+      description: Copy the messages from the step that failed.
+      render: text

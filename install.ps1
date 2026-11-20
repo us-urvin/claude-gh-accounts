@@ -4,6 +4,7 @@
 # Safe to run again any time to add accounts or change folders.
 
 $ErrorActionPreference = 'Continue'
+$RepoUrl    = 'https://github.com/us-urvin/claude-gh-accounts'
 $MapFile    = Join-Path $HOME '.claude-gh-accounts'
 $BlockStart = '# >>> claude-gh-accounts >>>'
 $BlockEnd   = '# <<< claude-gh-accounts <<<'
@@ -130,6 +131,7 @@ function Save-Map {
     [IO.File]::WriteAllText($MapFile, ((@($lines) -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
 }
 function GitDir($f) { return ($f -replace '\\', '/') + '/' }
+$firstRun = ($map.Count -eq 0)
 if ($map.Count) {
     Info ''; Info 'Already set up:'
     foreach ($e in $map) { Info "  $($e.Folder)  ->  $($e.User)" }
@@ -306,3 +308,11 @@ Info '4. To double-check, ask Claude to run:  gh api user --jq .login'
 Info ''
 Info 'Repos outside these folders keep working exactly as before.'
 Info 'Run this script again any time to add an account or change a folder.'
+
+# ---------------------------------------------------------------- Star
+Write-Host ''
+Write-Host '  * Did this save you time? A GitHub star helps other people find it:' -ForegroundColor Yellow
+Info "  $RepoUrl"
+if ($firstRun -and (AskYes 'Open it in your browser now?' 'y')) {
+    try { Start-Process $RepoUrl -ErrorAction Stop } catch { Info "Couldn't open a browser here. Copy the link above instead." }
+}
