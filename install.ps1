@@ -187,11 +187,13 @@ function Test-Claude($path) {
     try { & $path --version *> $null; return ($LASTEXITCODE -eq 0) } catch { return $false }
 }
 function Claude-Version($path) { try { return "$(& $path --version 2>$null | Select-Object -First 1)" } catch { return '' } }
-$c = First-Claude
-if ($c -and (Test-Claude $c.Source)) {
-    Say '  ' '' $S.Ok $C.Ok ' Claude Code is ready ' '' "($(Claude-Version $c.Source))" $C.Dim
+# Note: PowerShell variable names ignore case, so never name a script-level variable $c or $s:
+# that would overwrite the $C (colors) and $S (symbols) tables.
+$claudeCmd = First-Claude
+if ($claudeCmd -and (Test-Claude $claudeCmd.Source)) {
+    Say '  ' '' $S.Ok $C.Ok ' Claude Code is ready ' '' "($(Claude-Version $claudeCmd.Source))" $C.Dim
 } else {
-    if ($c) { Warn "Found a Claude Code install that doesn't start ($($c.Source)). Reinstalling it." }
+    if ($claudeCmd) { Warn "Found a Claude Code install that doesn't start ($($claudeCmd.Source)). Reinstalling it." }
     if (Has npm) {
         $npmHas = npm ls -g @anthropic-ai/claude-code 2>$null | Out-String
         if ($npmHas -match 'claude-code') {
@@ -208,12 +210,12 @@ if ($c -and (Test-Claude $c.Source)) {
         [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ";$localBin").TrimStart(';'), 'User')
     }
     Refresh-Path
-    $c = First-Claude
-    if (-not $c) { Fail "Claude Code didn't install correctly. Copy the messages above and ask for help." }
-    if (-not (Test-Claude $c.Source)) {
-        Fail "A broken Claude Code file is in the way: $($c.Source). Delete it (as Administrator), then run the installer again."
+    $claudeCmd = First-Claude
+    if (-not $claudeCmd) { Fail "Claude Code didn't install correctly. Copy the messages above and ask for help." }
+    if (-not (Test-Claude $claudeCmd.Source)) {
+        Fail "A broken Claude Code file is in the way: $($claudeCmd.Source). Delete it (as Administrator), then run the installer again."
     }
-    Say '  ' '' $S.Ok $C.Ok ' Claude Code installed ' '' "($(Claude-Version $c.Source))" $C.Dim
+    Say '  ' '' $S.Ok $C.Ok ' Claude Code installed ' '' "($(Claude-Version $claudeCmd.Source))" $C.Dim
 }
 
 # ================================================================ Step 4
@@ -281,8 +283,8 @@ function Find-SshTool($name) {
             if ($dir) { $p = Join-Path $dir "usr\bin\$name.exe"; if (Test-Path $p) { return $p } }
         }
     }
-    $c = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($c) { return $c.Source }
+    $cmd = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($cmd) { return $cmd.Source }
     return $null
 }
 # Which GitHub account does this key log in as? (empty if none)
@@ -603,6 +605,15 @@ foreach ($p in $profiles) {
 # Command Prompt (cmd.exe) doesn't read PowerShell profiles, so it gets a small claude.cmd
 # in its own folder at the front of your PATH. It looks up the account (claude-gh-lookup.ps1)
 # and then starts the real Claude Code with that account's token.
+# Add our AutoRun file to Command Prompt's AutoRun setting, keeping anything already there
+function Set-CmdAutoRun($regPath, $file) {
+    if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
+    $cur = "$((Get-ItemProperty -Path $regPath -Name AutoRun -ErrorAction SilentlyContinue).AutoRun)"
+    if ($cur.Contains($file)) { return }
+    $entry = "`"$file`""
+    $new = if ($cur.Trim()) { "$cur & $entry" } else { $entry }
+    Set-ItemProperty -Path $regPath -Name AutoRun -Value $new
+}
 $cmdShim = @'
 @echo off
 rem Starts Claude Code with the GitHub account that matches the current folder.
@@ -666,13 +677,13 @@ try {
     $rest = @($userPath -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ne $ShimDir) })
     [Environment]::SetEnvironmentVariable('Path', ((@($ShimDir) + $rest) -join ';'), 'User')
     Refresh-Path
+    # Windows searches the system-wide PATH before yours, so a Claude Code installed for all users
+    # (e.g. with npm into C:\Program Files\nodejs) would be found before claude.cmd. A doskey
+    # shortcut beats every PATH, so Command Prompt defines one when it starts (its "AutoRun").
+    $autorun = Join-Path $ShimDir 'cmd-autorun.cmd'
+    [IO.File]::WriteAllText($autorun, "@doskey claude=`"$(Join-Path $ShimDir 'claude.cmd')`" `$*`r`n", $ascii)
+    Set-CmdAutoRun 'HKCU:\Software\Microsoft\Command Processor' $autorun
     Ok 'Added the smart claude command to Command Prompt'
-    $real = First-Claude
-    $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';' | ForEach-Object { $_.TrimEnd('\') }
-    if ($real -and ($machinePath -contains (Split-Path -Parent $real.Source))) {
-        Warn 'Claude Code is installed for all users, so Command Prompt finds it first and skips account switching.'
-        Info 'PowerShell switches accounts as normal. Git switches accounts everywhere.'
-    }
 } catch {
     Warn "Couldn't set up Command Prompt: $($_.Exception.Message)"
     Info 'PowerShell switches accounts as normal. Git switches accounts everywhere.'
@@ -680,8 +691,8 @@ try {
 
 # Let PowerShell load the profile (Windows blocks scripts by default)
 $effective = 'Restricted'
-foreach ($s in 'MachinePolicy', 'UserPolicy', 'CurrentUser', 'LocalMachine') {
-    $v = Get-ExecutionPolicy -Scope $s
+foreach ($policyScope in 'MachinePolicy', 'UserPolicy', 'CurrentUser', 'LocalMachine') {
+    $v = Get-ExecutionPolicy -Scope $policyScope
     if ("$v" -ne 'Undefined') { $effective = "$v"; break }
 }
 if ($effective -in 'Restricted', 'AllSigned') {

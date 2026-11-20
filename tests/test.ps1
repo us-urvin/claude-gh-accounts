@@ -17,6 +17,9 @@ $null = [System.Management.Automation.Language.Parser]::ParseInput($src, [ref]$n
 Check 'install.ps1 parses' 0 @($errs).Count
 $m = [regex]::Match($src, "(?s)\`$launcher = @'\r?\n(.*?)\r?\n'@")
 Check 'launcher block found' $true $m.Success
+# PowerShell names ignore case: a script-level $c or $s would overwrite the $C/$S style tables
+$clash = [regex]::Matches($src, '(?m)^[ ]{0,4}\$(c|s)\s*=(?!\s*@\{)|foreach \(\$(c|s) in', 'IgnoreCase')
+Check 'no script-level $c/$s (would wipe colors/symbols)' 0 @($clash).Count
 
 Write-Host 'Launcher'
 $T = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid())
@@ -83,6 +86,26 @@ try {
         Check "$($pair[1]) block found" $true $mm.Success
         Set-Content (Join-Path $shim $pair[1]) ($mm.Groups[1].Value -replace "`r?`n", "`r`n") -Encoding ascii
     }
+    # AutoRun: a doskey shortcut so "claude" works even when Claude Code is installed for all users
+    $sca = [regex]::Match($src, '(?s)function Set-CmdAutoRun\(.*?\r?\n\}').Value
+    Check 'Set-CmdAutoRun found' $true ([bool]$sca)
+    . ([scriptblock]::Create($sca))
+    $testKey = 'HKCU:\Software\claude-gh-accounts-test'
+    try {
+        New-Item -Path $testKey -Force | Out-Null
+        Set-ItemProperty -Path $testKey -Name AutoRun -Value 'echo existing'
+        Set-CmdAutoRun $testKey 'C:\x y\cmd-autorun.cmd'
+        Set-CmdAutoRun $testKey 'C:\x y\cmd-autorun.cmd'   # second run must not add it twice
+        Check 'AutoRun keeps the existing value, adds ours once' 'echo existing & "C:\x y\cmd-autorun.cmd"' (Get-ItemProperty $testKey).AutoRun
+        Remove-ItemProperty -Path $testKey -Name AutoRun
+        Set-CmdAutoRun $testKey 'C:\x y\cmd-autorun.cmd'
+        Check 'AutoRun when empty' '"C:\x y\cmd-autorun.cmd"' (Get-ItemProperty $testKey).AutoRun
+    } finally { Remove-Item -Path $testKey -Recurse -Force -ErrorAction SilentlyContinue }
+    $ar = Join-Path $shim 'cmd-autorun.cmd'
+    [IO.File]::WriteAllText($ar, "@doskey claude=`"$shim\claude.cmd`" `$*`r`n")
+    $macros = cmd /d /c "call `"$ar`" & doskey /macros" | Out-String
+    Check 'doskey shortcut points claude at our helper' $true ($macros -match [regex]::Escape("claude=`"$shim\claude.cmd`" `$*"))
+
     # The lookup runs in a new PowerShell, which takes HOME from these variables
     $oldProfile = $env:USERPROFILE; $oldDrive = $env:HOMEDRIVE; $oldHPath = $env:HOMEPATH
     $env:USERPROFILE = $T; $env:HOMEDRIVE = $T.Substring(0, 2); $env:HOMEPATH = $T.Substring(2)

@@ -4,6 +4,17 @@ All notable changes to this project are listed here. Versions follow [Semantic V
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-21
+
+### Fixed
+- Windows: colors and symbols (progress bar, borders, check marks) disappeared partway through
+  the installer. PowerShell variable names ignore case, so two variables (`$c`, `$s`) overwrote
+  the color and symbol settings (`$C`, `$S`). Added a test that guards against this.
+- Windows: `claude` now switches accounts in Command Prompt even when Claude Code is installed for
+  all users (for example with npm into `C:\Program Files\nodejs`). Command Prompt now defines a
+  `doskey` shortcut at start-up (via its AutoRun setting, keeping any existing value), which takes
+  priority over every PATH.
+
 ## [1.2.0] - 2026-11-21
 
 ### Added
@@ -48,7 +59,8 @@ First public release.
 - Re-running the installer adds accounts, moves an account to a new folder, or updates names and emails.
 - Tests and CI on Linux, macOS (bash 3.2) and Windows (PowerShell 5.1 and 7).
 
-[Unreleased]: https://github.com/us-urvin/claude-gh-accounts/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/us-urvin/claude-gh-accounts/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/us-urvin/claude-gh-accounts/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/us-urvin/claude-gh-accounts/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/us-urvin/claude-gh-accounts/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/us-urvin/claude-gh-accounts/releases/tag/v1.0.0

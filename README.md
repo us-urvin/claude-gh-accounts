@@ -232,7 +232,7 @@ Yes. The scripts are short, open and tested on every change. Your logins stay in
 1. Delete the block between `# >>> claude-gh-accounts >>>` and `# <<< claude-gh-accounts <<<` in your shell profile(s).
 2. Remove the `includeIf` lines from `~/.gitconfig` (`git config --global --edit`).
 3. Delete `~/.claude-gh-accounts` and the `~/.gitconfig-<nickname>` files.
-4. Windows only: delete `%LOCALAPPDATA%\claude-gh-accounts` and remove it from your user `PATH` (Start → "Edit environment variables for your account").
+4. Windows only: delete `%LOCALAPPDATA%\claude-gh-accounts`, remove it from your user `PATH` (Start → "Edit environment variables for your account"), and remove the `cmd-autorun.cmd` entry from `AutoRun` under `HKEY_CURRENT_USER\Software\Microsoft\Command Processor` (Registry Editor).
 5. SSH only: delete `~/.ssh/claude-gh-<nickname>` and `.pub`, and remove the key at https://github.com/settings/keys.
 6. Optional: `gh auth logout --user <name>` for accounts you no longer need.
 
