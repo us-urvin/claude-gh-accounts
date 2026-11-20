@@ -11,6 +11,15 @@ check() { # $1 = description, $2 = expected, $3 = actual
   else failed=$((failed + 1)); printf '  FAIL %s\n       expected: %s\n       actual:   %s\n' "$1" "$2" "$3"; fi
 }
 
+# Load one function from install.sh into this shell. (Kept as a function on purpose: macOS's
+# bash 3.2 mis-parses  eval "$(sed -n "/^$fn() {/,/^}/p" ...)"  with its nested quotes.)
+load_fn() {
+  local pattern="/^$1() {/,/^}/p" body
+  body="$(sed -n "$pattern" "$SCRIPT")"
+  [ -n "$body" ] || { echo "  FAIL could not load $1 from install.sh"; return 1; }
+  eval "$body"
+}
+
 T="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$T"' EXIT
 BIN="$T/bin"
 if command -v cygpath >/dev/null 2>&1; then # Git Bash on Windows: give native git C:/ paths
@@ -119,7 +128,7 @@ check "HTTPS still works in an SSH account"      "username=sam password=TOKEN-fo
 
 if command -v ssh-keygen >/dev/null 2>&1; then
   # The installer's SSH setup: create key -> upload with gh -> confirm GitHub sees the right account
-  for fn in ssh_whoami trust_github_host setup_ssh; do eval "$(sed -n "/^$fn() {/,/^}/p" "$SCRIPT")"; done
+  for fn in ssh_whoami trust_github_host setup_ssh; do load_fn "$fn"; done
   eval "$(sed -n '/^same_user() {/p' "$SCRIPT")"
   has() { command -v "$1" >/dev/null 2>&1; }; warn() { :; }; dim() { :; }; ask() { printf ''; }
   # shellcheck disable=SC2034
@@ -134,7 +143,7 @@ if command -v ssh-keygen >/dev/null 2>&1; then
 fi
 
 echo "Smart defaults (fewer questions)"
-for fn in gh_logged_in_users github_profile existing_account; do eval "$(sed -n "/^$fn() {/,/^}/p" "$SCRIPT")"; done
+for fn in gh_logged_in_users github_profile existing_account; do load_fn "$fn"; done
 eval "$(sed -n '/^same_user() {/p' "$SCRIPT")"
 gh_name="" gh_email="" ex_label="" ex_folder="" ex_name="" ex_email="" ex_ssh=""  # set by the functions above
 check "finds accounts logged in on this computer" "sam al-home" "$(gh_logged_in_users | tr '\n' ' ' | sed 's/ *$//')"
