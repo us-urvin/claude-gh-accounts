@@ -63,23 +63,29 @@ Open a terminal, paste **one** line, and answer a few friendly questions.
 curl -fsSL https://github.com/us-urvin/claude-gh-accounts/releases/latest/download/install.sh | bash
 ```
 
-**🪟 Windows:** open **PowerShell** (press <kbd>Win</kbd>, type `PowerShell`, press <kbd>Enter</kbd>) and paste:
+**🪟 Windows:** first check which terminal you have, by how the line starts:
+
+| Your terminal shows | You're in | Paste this |
+| --- | --- | --- |
+| `PS C:\Users\you>` | **PowerShell** | `irm https://github.com/us-urvin/claude-gh-accounts/releases/latest/download/install.ps1 \| iex` |
+| `C:\Users\you>` (no **PS**) | **Command Prompt** | the longer command below |
+
+**PowerShell:**
 
 ```powershell
 irm https://github.com/us-urvin/claude-gh-accounts/releases/latest/download/install.ps1 | iex
 ```
 
-<details>
-<summary>Using <b>Command Prompt</b> (<code>cmd</code>) instead? Getting <i>"'irm' is not recognized"</i>?</summary>
-
-`irm` only works in PowerShell. In Command Prompt, paste this instead:
+**Command Prompt:**
 
 ```cmd
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/us-urvin/claude-gh-accounts/releases/latest/download/install.ps1 | iex"
 ```
 
 After installing, `claude` switches accounts in **both** Command Prompt and PowerShell.
-</details>
+
+> [!WARNING]
+> On Windows, **don't** use the macOS / Linux `curl ... | bash` command. `bash` there opens the Linux subsystem (WSL), which fails with *"Windows Subsystem for Linux has no installed distributions"*.
 
 It takes about **3 minutes**. The installer walks you through everything:
 
@@ -179,6 +185,7 @@ If the email is wrong, the project isn't inside an account folder. Move it there
 | `GH006: Protected branch update failed` or `Changes must be made through a pull request` | The branch is protected. | Push to a new branch and open a pull request: `git switch -c my-change`, `git push -u origin my-change`, `gh pr create`. |
 | `! [rejected] main -> main (fetch first)` or `non-fast-forward` | GitHub has commits you don't have yet. | `git pull --rebase`, then push again. |
 | `'irm' is not recognized` (Windows) | You're in Command Prompt, not PowerShell. | Use the [Command Prompt install command](#-install-in-one-line). |
+| `Windows Subsystem for Linux has no installed distributions` | You ran the macOS / Linux `curl ... \| bash` command on Windows. | Use the [Windows install command](#-install-in-one-line) for your terminal. |
 
 Still stuck? [Open an issue](https://github.com/us-urvin/claude-gh-accounts/issues/new/choose) and paste the error. Remove any tokens or emails first.
 
