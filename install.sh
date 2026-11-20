@@ -262,6 +262,25 @@ remove_global_gh_helper() {
   fi
 }
 
+# Pushes that change GitHub Actions files (.github/workflows) need the "workflow" permission.
+# Logins made without it get "refusing to allow an OAuth App to create or update workflow".
+ensure_workflow_scope() { # $1 = GitHub user
+  local tok scopes
+  tok="$(gh auth token --user "$1" 2>/dev/null)" || return 0
+  scopes="$(GH_TOKEN="$tok" gh api -i user 2>/dev/null | tr -d '\r' | sed -n 's/^[Xx]-[Oo][Aa][Uu][Tt][Hh]-[Ss][Cc][Oo][Pp][Ee][Ss]: *//p')"
+  [ -z "$scopes" ] && return 0  # couldn't check (offline, or a token type without scopes): don't nag
+  case ",$(printf '%s' "$scopes" | tr -d ' ')," in *,workflow,*) return 0 ;; esac
+  warn "The login for $1 can't change GitHub Actions files (.github/workflows),"
+  info "so pushes that touch them would be refused. One more browser step fixes it."
+  if ask_yes "Fix it now?" y; then
+    gh auth switch --hostname github.com --user "$1" >/dev/null 2>&1
+    if gh auth refresh --hostname github.com --scopes workflow </dev/tty; then ok "$1 can now push GitHub Actions changes"
+    else warn "Couldn't add it. Later, run:  gh auth switch --user $1  then  gh auth refresh -s workflow"; fi
+  else
+    dim "Later, run:  gh auth switch --user $1  then  gh auth refresh -s workflow"
+  fi
+}
+
 default_name="$(git config --global user.name 2>/dev/null || true)"
 another=0; count=0
 if [ -s "$MAP_FILE" ]; then ask_yes "Add or change an account now?" y && another=1; else another=1; fi
@@ -311,7 +330,7 @@ while [ "$another" -eq 1 ]; do
     while true; do
       printf '  %s%s%s Logging in as %s%s%s. A browser window will open - follow the steps there.\n' "$CYN" "$S_ARROW" "$R" "$B" "$user" "$R"
       dim "(Choose \"Login with a web browser\" and copy the one-time code it shows.)"
-      gh auth login --hostname github.com --git-protocol https --web </dev/tty
+      gh auth login --hostname github.com --git-protocol https --web --scopes workflow </dev/tty
       if gh auth token --user "$user" >/dev/null 2>&1; then ok "Logged in as $B$user$R"; break; fi
       who="$(gh api user --jq .login 2>/dev/null || true)"
       # GitHub usernames aren't case sensitive, but gh stores them exactly as GitHub spells them
@@ -323,15 +342,17 @@ while [ "$another" -eq 1 ]; do
       ask_yes "Try logging in again?" y || { warn "Skipped. Run the installer again to finish logging in as $user."; break; }
     done
   fi
+  ensure_workflow_scope "$user"
 
   # Per-folder git settings: commit identity + which account git uses for github.com
+  # The helper hands git this account's token, and prints a hint if GitHub ever rejects it.
   cfg="$HOME/.gitconfig-$label"
   rm -f "$cfg"
   git config --file "$cfg" user.name "$name"
   git config --file "$cfg" user.email "$email"
   git config --file "$cfg" --add 'credential.https://github.com.helper' ''
   git config --file "$cfg" --add 'credential.https://github.com.helper' \
-    "!f() { test \"\$1\" = get && echo \"username=$user\" && echo \"password=\$(gh auth token --user $user)\"; }; f"
+    "!f() { case \"\$1\" in get) echo \"username=$user\"; echo \"password=\$(gh auth token --user $user)\" ;; erase) echo \"claude-gh-accounts: GitHub did not accept the saved login for $user. Log in again with: gh auth login   Help: $REPO_URL#-troubleshooting\" >&2 ;; esac; }; f"
 
   # Forget earlier entries for this folder or this label (e.g. the label moved to a new folder)
   tmp="$(mktemp)"
@@ -431,6 +452,7 @@ card_bottom
 printf '\n'
 dim "Projects outside these folders keep working exactly as before."
 dim "Run the installer again any time to add or change an account."
+dim "Push not working? Common errors and fixes: $REPO_URL#-troubleshooting"
 
 # ================================================================ Star
 printf '\n  %s%s%s  %sEnjoying it? A star on GitHub helps other people find it.%s\n' "$RED" "$S_HEART" "$R" "$B" "$R"

@@ -52,8 +52,8 @@ fi
 echo "Git config"
 : > "$T/.claude-gh-accounts"; MAP_FILE="$T/.claude-gh-accounts"
 ok() { :; }; info() { :; }; pretty() { printf '%s' "$1"; }
-# shellcheck disable=SC2034  # color codes used by configure()
-B="" R=""
+# shellcheck disable=SC2034  # color codes and repo link used by configure()
+B="" R="" REPO_URL="https://github.com/us-urvin/claude-gh-accounts"
 blk="$(sed -n '/# Per-folder git settings/,/ok "Repos in/p' "$SCRIPT")"
 eval "configure() { $blk
 }"
@@ -66,6 +66,9 @@ mkdir -p "$folder/r" && git -C "$folder/r" init -q && configure
 check "commit name"                     "Alice A"           "$(git -C "$T/w/r" config user.name)"
 check "commit email"                    "alice@example.com" "$(git -C "$T/w/r" config user.email)"
 check "credentials come from gh"        "username=alice password=TOKEN-for-alice " "$(fill "$T/w/r")"
+hint="$(printf 'protocol=https\nhost=github.com\nusername=alice\npassword=bad\n\n' | git -C "$T/w/r" credential reject 2>&1)"
+case "$hint" in *"did not accept the saved login for alice"*"#-troubleshooting"*) hint=ok ;; esac
+check "rejected login prints a helpful hint" "ok" "$hint"
 
 git config --global --add credential.https://github.com.helper ''
 git config --global --add credential.https://github.com.helper "!'C:\\Program Files\\GitHub CLI\\gh.exe' auth git-credential"

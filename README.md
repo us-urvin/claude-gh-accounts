@@ -73,7 +73,7 @@ irm https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.p
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.ps1 | iex"
 ```
 
-After installing, start `claude` from a **PowerShell** window to get automatic account switching. Git (commits, push, pull) switches accounts in Command Prompt too.
+After installing, `claude` switches accounts in **both** Command Prompt and PowerShell.
 </details>
 
 It takes about **3 minutes**. The installer walks you through everything:
@@ -132,7 +132,8 @@ flowchart LR
 1. **Installs what's missing:** Git, GitHub CLI (2.40+, which supports several logged-in accounts) and Claude Code (official installer). It uses Homebrew, apt, dnf, pacman, zypper or winget.
 2. **Logs in each account** with `gh auth login`. Tokens stay in gh's secure storage (macOS Keychain, Windows Credential Manager or the Linux keyring). This tool never writes them to disk.
 3. **Configures git per folder:** it adds an `includeIf "gitdir/i:<folder>/"` entry to `~/.gitconfig` that loads `~/.gitconfig-<nickname>`. That file holds the commit identity and a credential helper that asks gh for that account's token.
-4. **Adds a small `claude` function** to your shell profile. It finds the longest matching folder in `~/.claude-gh-accounts` and starts Claude Code with that account's `GH_TOKEN`.
+4. **Adds a small `claude` function** to your shell profile. It finds the longest matching folder in `~/.claude-gh-accounts` and starts Claude Code with that account's `GH_TOKEN`. On Windows, a `claude.cmd` placed at the front of your user `PATH` does the same in Command Prompt.
+5. **Prevents common push errors:** new logins include the `workflow` permission (needed to push GitHub Actions files), existing logins are checked and fixed with your OK, and if GitHub ever rejects a saved login, git prints a hint with the fix.
 
 | File | Purpose |
 | --- | --- |
@@ -141,8 +142,35 @@ flowchart LR
 | `~/.gitconfig` | One `includeIf` line per account |
 | `~/.zshrc`, `~/.bashrc`, `~/.bash_profile` | The `claude` function, between `# >>> claude-gh-accounts >>>` markers |
 | `Documents\PowerShell\profile.ps1`, `Documents\WindowsPowerShell\profile.ps1` | The same function for PowerShell |
+| `%LOCALAPPDATA%\claude-gh-accounts\bin` (added to your user `PATH`) | `claude.cmd` and its helper, for Command Prompt |
 
 </details>
+
+## 🧰 Troubleshooting
+
+**First, check which account a project is using.** Run these inside the project folder:
+
+```bash
+git config user.email      # should be this account's email
+gh auth status             # lists your logged-in accounts
+git remote -v              # should start with https://github.com/
+```
+
+If the email is wrong, the project isn't inside an account folder. Move it there, or run the installer again to add the folder.
+
+### Common push errors
+
+| You see | What it means | Fix |
+| --- | --- | --- |
+| `refusing to allow an OAuth App to create or update workflow ... without workflow scope` | Your login isn't allowed to change GitHub Actions files (`.github/workflows`). | `gh auth switch --user <you>`, then `gh auth refresh -h github.com -s workflow`. Or run the installer again, which offers to fix it. |
+| `Permission to OWNER/REPO.git denied to <other-user>` or `403` | Git used a different account than the one with access. | Check `git config user.email` (see above). Make sure the project is inside the right account folder and the remote is `https://`. |
+| `Repository not found` | The repo is private and this account can't see it, or it's the wrong account. | Same as above. Also check on github.com that this account has access to the repo. |
+| `Authentication failed` or `GitHub did not accept the saved login for <you>` | The saved login expired or was revoked. | `gh auth login` and sign in as that account again. |
+| `GH006: Protected branch update failed` or `Changes must be made through a pull request` | The branch is protected. | Push to a new branch and open a pull request: `git switch -c my-change`, `git push -u origin my-change`, `gh pr create`. |
+| `! [rejected] main -> main (fetch first)` or `non-fast-forward` | GitHub has commits you don't have yet. | `git pull --rebase`, then push again. |
+| `'irm' is not recognized` (Windows) | You're in Command Prompt, not PowerShell. | Use the [Command Prompt install command](#-install-in-one-line). |
+
+Still stuck? [Open an issue](https://github.com/us-urvin/claude-gh-accounts/issues/new/choose) and paste the error. Remove any tokens or emails first.
 
 ## ❓ FAQ
 
@@ -181,7 +209,8 @@ Yes. The scripts are short, open and tested on every change. Your logins stay in
 1. Delete the block between `# >>> claude-gh-accounts >>>` and `# <<< claude-gh-accounts <<<` in your shell profile(s).
 2. Remove the `includeIf` lines from `~/.gitconfig` (`git config --global --edit`).
 3. Delete `~/.claude-gh-accounts` and the `~/.gitconfig-<nickname>` files.
-4. Optional: `gh auth logout --user <name>` for accounts you no longer need.
+4. Windows only: delete `%LOCALAPPDATA%\claude-gh-accounts` and remove it from your user `PATH` (Start → "Edit environment variables for your account").
+5. Optional: `gh auth logout --user <name>` for accounts you no longer need.
 
 ## 🤝 Contributing
 

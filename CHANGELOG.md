@@ -4,6 +4,12 @@ All notable changes to this project are listed here. Versions follow [Semantic V
 
 ## [Unreleased]
 
+### Added
+- Windows: `claude` now switches accounts in Command Prompt too (`claude.cmd`).
+- New logins include the `workflow` permission; existing logins are checked and fixed with your OK.
+- If GitHub rejects a saved login, git prints a hint with the fix.
+- README: Command Prompt install command and a Troubleshooting section for common push errors.
+
 ## [1.0.0] - 2026-11-21
 
 First public release.

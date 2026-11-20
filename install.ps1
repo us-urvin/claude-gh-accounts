@@ -14,6 +14,8 @@ $MapFile    = Join-Path $HOME '.claude-gh-accounts'
 $BlockStart = '# >>> claude-gh-accounts >>>'
 $BlockEnd   = '# <<< claude-gh-accounts <<<'
 $TotalSteps = 6
+# Holds the claude.cmd helper that makes "claude" switch accounts in Command Prompt too
+$ShimDir    = Join-Path $env:LOCALAPPDATA 'claude-gh-accounts\bin'
 
 # ================================================================ Look & feel
 function U([int[]]$codes) { return -join ($codes | ForEach-Object { [char]$_ }) }
@@ -176,7 +178,11 @@ Say '  ' '' $S.Ok $C.Ok ' GitHub CLI is ready ' '' "($(Gh-Version))" $C.Dim
 # ================================================================ Step 3
 Step 3 'Claude Code' "Your AI coding assistant, installed with Anthropic's official installer."
 $localBin = Join-Path $HOME '.local\bin'
-function First-Claude { Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
+function First-Claude {
+    # The real Claude Code, not our own Command Prompt helper
+    Get-Command claude -CommandType Application -ErrorAction SilentlyContinue |
+        Where-Object { (Split-Path -Parent $_.Source) -ne $ShimDir } | Select-Object -First 1
+}
 function Test-Claude($path) {
     try { & $path --version *> $null; return ($LASTEXITCODE -eq 0) } catch { return $false }
 }
@@ -262,6 +268,29 @@ function Remove-GlobalGhHelper {
     }
 }
 
+# Pushes that change GitHub Actions files (.github/workflows) need the "workflow" permission.
+# Logins made without it get "refusing to allow an OAuth App to create or update workflow".
+function Ensure-WorkflowScope($u) {
+    $tok = gh auth token --user $u 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $tok) { return }
+    $saved = $env:GH_TOKEN
+    try { $env:GH_TOKEN = "$tok".Trim(); $headers = gh api -i user 2>$null } finally { $env:GH_TOKEN = $saved }
+    $scopes = ''
+    foreach ($h in @($headers)) { if ("$h" -match '^x-oauth-scopes:\s*(.*)$') { $scopes = $Matches[1].Trim() } }
+    if (-not $scopes) { return }  # couldn't check (offline, or a token type without scopes): don't nag
+    if ((($scopes -split ',') | ForEach-Object { $_.Trim() }) -contains 'workflow') { return }
+    Warn "The login for $u can't change GitHub Actions files (.github/workflows),"
+    Info 'so pushes that touch them would be refused. One more browser step fixes it.'
+    if (AskYes 'Fix it now?' 'y') {
+        gh auth switch --hostname github.com --user $u *> $null
+        gh auth refresh --hostname github.com --scopes workflow
+        if ($LASTEXITCODE -eq 0) { Ok "$u can now push GitHub Actions changes" }
+        else { Warn "Couldn't add it. Later, run:  gh auth switch --user $u  then  gh auth refresh -s workflow" }
+    } else {
+        Dim "Later, run:  gh auth switch --user $u  then  gh auth refresh -s workflow"
+    }
+}
+
 $defaultName = git config --global user.name 2>$null
 $another = if ($map.Count) { AskYes 'Add or change an account now?' 'y' } else { $true }
 $count = 0
@@ -311,7 +340,7 @@ while ($another) {
         while ($true) {
             Doing "Logging in as $user. A browser window will open - follow the steps there."
             Dim '(Choose "Login with a web browser" and copy the one-time code it shows.)'
-            gh auth login --hostname github.com --git-protocol https --web
+            gh auth login --hostname github.com --git-protocol https --web --scopes workflow
             gh auth token --user $user *> $null
             if ($LASTEXITCODE -eq 0) { Ok "Logged in as $user"; break }
             $who = gh api user --jq .login 2>$null
@@ -323,11 +352,15 @@ while ($another) {
             if (-not (AskYes 'Try logging in again?' 'y')) { Warn "Skipped. Run the installer again to finish logging in as $user."; break }
         }
     }
+    Ensure-WorkflowScope $user
 
     # Per-folder git settings: commit identity + which account git uses for github.com
+    # The helper hands git this account's token, and prints a hint if GitHub ever rejects it.
     # Written directly (not via "git config") because Windows PowerShell mangles quotes and empty values passed to programs
     $cfg = Join-Path $HOME ".gitconfig-$label"
-    $helper = '!f() { test "$1" = get && echo "username=' + $user + '" && echo "password=$(gh auth token --user ' + $user + ')"; }; f'
+    $helper = '!f() { case "$1" in get) echo "username=' + $user + '"; echo "password=$(gh auth token --user ' + $user + ')" ;; ' +
+              'erase) echo "claude-gh-accounts: GitHub did not accept the saved login for ' + $user + '. Log in again with: gh auth login   Help: ' +
+              $RepoUrl + '#-troubleshooting" >&2 ;; esac; }; f'
     $cfgText = "[user]`n`tname = $(GitQuote $name)`n`temail = $(GitQuote $email)`n" +
                "[credential `"https://github.com`"]`n`thelper =`n`thelper = $(GitQuote $helper)`n"
     [IO.File]::WriteAllText($cfg, $cfgText, (New-Object Text.UTF8Encoding($false)))
@@ -362,7 +395,8 @@ $launcher = @'
 # Managed by claude-gh-accounts (https://github.com/us-urvin/claude-gh-accounts):
 # run the installer again to change accounts.
 function claude {
-    $exe = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    $exe = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue |
+        Where-Object { $_.Source -notlike '*\claude-gh-accounts\bin\*' } | Select-Object -First 1
     if (-not $exe) { Write-Host 'Claude Code was not found. Run the claude-gh-accounts installer again.' -ForegroundColor Red; return }
     $map  = Join-Path $HOME '.claude-gh-accounts'
     $here = (Get-Location).ProviderPath.TrimEnd('\') + '\'
@@ -408,6 +442,84 @@ foreach ($p in $profiles) {
     Ok "Added the smart claude command to $(Pretty $p)"
 }
 
+# Command Prompt (cmd.exe) doesn't read PowerShell profiles, so it gets a small claude.cmd
+# in its own folder at the front of your PATH. It looks up the account (claude-gh-lookup.ps1)
+# and then starts the real Claude Code with that account's token.
+$cmdShim = @'
+@echo off
+rem Starts Claude Code with the GitHub account that matches the current folder.
+rem Managed by claude-gh-accounts (https://github.com/us-urvin/claude-gh-accounts):
+rem run the installer again to change accounts.
+setlocal
+set "CGA_EXE="
+set "CGA_USER="
+set "CGA_TOKEN="
+for /f "usebackq tokens=1-3 delims=|" %%A in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0claude-gh-lookup.ps1"`) do (
+  set "CGA_EXE=%%A"
+  set "CGA_USER=%%B"
+  set "CGA_TOKEN=%%C"
+)
+if not defined CGA_EXE for /f "delims=" %%P in ('where claude.exe 2^>nul') do if not defined CGA_EXE set "CGA_EXE=%%P"
+if not defined CGA_EXE (
+  echo Claude Code was not found. Run the claude-gh-accounts installer again.
+  exit /b 1
+)
+if defined CGA_TOKEN (
+  echo GitHub account: %CGA_USER%
+  set "GH_TOKEN=%CGA_TOKEN%"
+) else if defined CGA_USER (
+  echo Not logged in to GitHub as %CGA_USER%. Run: gh auth login
+)
+call "%CGA_EXE%" %*
+exit /b %ERRORLEVEL%
+'@
+$cmdLookup = @'
+# Used by claude.cmd: prints "<real claude path>|<github user>|<token>" for the current folder.
+# Managed by claude-gh-accounts (https://github.com/us-urvin/claude-gh-accounts).
+$bin = Split-Path -Parent $MyInvocation.MyCommand.Path
+$exe = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue |
+    Where-Object { (Split-Path -Parent $_.Source) -ne $bin } | Select-Object -First 1
+if (-not $exe) { exit 1 }
+$map  = Join-Path $HOME '.claude-gh-accounts'
+$here = (Get-Location).ProviderPath.TrimEnd('\') + '\'
+$user = ''; $best = 0
+if (Test-Path $map) {
+    foreach ($line in Get-Content $map) {
+        $p = $line -split '\|'
+        if ($p.Count -lt 2 -or -not $p[0] -or -not $p[1]) { continue }
+        $f = $p[0].TrimEnd('\') + '\'
+        if ($here.StartsWith($f, [StringComparison]::OrdinalIgnoreCase) -and $f.Length -gt $best) { $user = $p[1]; $best = $f.Length }
+    }
+}
+$tok = ''
+if ($user) {
+    $t = gh auth token --user $user 2>$null
+    if ($LASTEXITCODE -eq 0 -and $t) { $tok = "$t".Trim() }
+}
+"$($exe.Source)|$user|$tok"
+'@
+try {
+    New-Item -ItemType Directory -Force -Path $ShimDir -ErrorAction Stop | Out-Null
+    $ascii = New-Object Text.ASCIIEncoding
+    [IO.File]::WriteAllText((Join-Path $ShimDir 'claude.cmd'), ($cmdShim -replace "`r?`n", "`r`n") + "`r`n", $ascii)
+    [IO.File]::WriteAllText((Join-Path $ShimDir 'claude-gh-lookup.ps1'), ($cmdLookup -replace "`r?`n", "`r`n") + "`r`n", $ascii)
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (-not $userPath) { $userPath = '' }
+    $rest = @($userPath -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ne $ShimDir) })
+    [Environment]::SetEnvironmentVariable('Path', ((@($ShimDir) + $rest) -join ';'), 'User')
+    Refresh-Path
+    Ok 'Added the smart claude command to Command Prompt'
+    $real = First-Claude
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';' | ForEach-Object { $_.TrimEnd('\') }
+    if ($real -and ($machinePath -contains (Split-Path -Parent $real.Source))) {
+        Warn 'Claude Code is installed for all users, so Command Prompt finds it first and skips account switching.'
+        Info 'PowerShell switches accounts as normal. Git switches accounts everywhere.'
+    }
+} catch {
+    Warn "Couldn't set up Command Prompt: $($_.Exception.Message)"
+    Info 'PowerShell switches accounts as normal. Git switches accounts everywhere.'
+}
+
 # Let PowerShell load the profile (Windows blocks scripts by default)
 $effective = 'Restricted'
 foreach ($s in 'MachinePolicy', 'UserPolicy', 'CurrentUser', 'LocalMachine') {
@@ -433,7 +545,7 @@ Show-Accounts 'Your accounts' $S.Dot
 $first = $map[0]
 Write-Host ''
 CardTop 'What to do now'
-CardLine '1' $C.G2 '  Close this window and open a ' '' 'new' $C.Bold ' PowerShell window.' ''
+CardLine '1' $C.G2 '  Close this window and open a ' '' 'new' $C.Bold ' PowerShell or Command Prompt window.' ''
 CardLine "   (This one doesn't know about the new setup yet.)" $C.Dim
 CardLine '2' $C.G2 '  Go to an account folder:   ' '' "cd $(Pretty $first.Folder)" $C.Accent
 CardLine '3' $C.G2 '  Download a project:        ' '' 'git clone https://github.com/OWNER/REPO.git' $C.Accent
@@ -443,6 +555,7 @@ CardBottom
 Write-Host ''
 Dim 'Projects outside these folders keep working exactly as before.'
 Dim 'Run the installer again any time to add or change an account.'
+Dim "Push not working? Common errors and fixes: $RepoUrl#-troubleshooting"
 
 # ================================================================ Star
 Write-Host ''
