@@ -44,11 +44,14 @@ You have a **work** GitHub account and a **personal** one, and maybe a few for c
 | | What happens |
 | --- | --- |
 | ✍️ **Commits** | Signed with the right name and email |
-| 🔐 **Clone, pull, push** | Use the right account's login |
+| 🔐 **Clone, pull, push** | Use the right account, over HTTPS **and SSH** (`git@github.com:...`) |
 | 🤖 **Claude Code** | Starts as the right account, so pull requests and issues come from the right person |
-| 🏠 **Everything else** | Projects outside these folders work exactly like before |
+| 🏠 **Everything else** | Projects outside these folders keep their usual settings |
 
 No need to remember anything or switch accounts by hand.
+
+> [!NOTE]
+> **Built for the terminal.** It works with Claude Code in your terminal (macOS, Linux, Windows PowerShell and Command Prompt). Support for Claude Code on the web and in IDEs is **coming soon**. [Star or watch the repo](https://github.com/us-urvin/claude-gh-accounts) to hear about it.
 
 ## 🚀 Install in one line
 
@@ -87,7 +90,8 @@ It takes about **3 minutes**. The installer walks you through everything:
 1. It installs anything missing (Git, GitHub CLI, Claude Code).
 2. For each account it asks for a **nickname**, the **GitHub username**, a **folder**, and your **name and email**.
 3. It shows a **quick check** so you can confirm, then opens your browser to log in.
-4. Done! **Open a new terminal window**, go into an account folder and type `claude`.
+4. If your projects use SSH addresses, it sets up an SSH key for that account too (optional).
+5. Done! **Open a new terminal window**, go into an account folder and type `claude`.
 
 > [!TIP]
 > When the browser opens to log in, make sure it's signed in to the **right** GitHub account. If it isn't, sign out on github.com first, or paste the login link into a private/incognito window.
@@ -133,14 +137,17 @@ flowchart LR
 
 1. **Installs what's missing:** Git, GitHub CLI (2.40+, which supports several logged-in accounts) and Claude Code (official installer). It uses Homebrew, apt, dnf, pacman, zypper or winget.
 2. **Logs in each account** with `gh auth login`. Tokens stay in gh's secure storage (macOS Keychain, Windows Credential Manager or the Linux keyring). This tool never writes them to disk.
-3. **Configures git per folder:** it adds an `includeIf "gitdir/i:<folder>/"` entry to `~/.gitconfig` that loads `~/.gitconfig-<nickname>`. That file holds the commit identity and a credential helper that asks gh for that account's token.
-4. **Adds a small `claude` function** to your shell profile. It finds the longest matching folder in `~/.claude-gh-accounts` and starts Claude Code with that account's `GH_TOKEN`. On Windows, a `claude.cmd` placed at the front of your user `PATH` does the same in Command Prompt.
-5. **Prevents common push errors:** new logins include the `workflow` permission (needed to push GitHub Actions files), existing logins are checked and fixed with your OK, and if GitHub ever rejects a saved login, git prints a hint with the fix.
+3. **Configures git per folder:** it adds an `includeIf "gitdir/i:<folder>/"` entry to `~/.gitconfig` that loads `~/.gitconfig-<nickname>`. That file holds the commit identity and a credential helper that asks gh for that account's token. The entries are kept at the end of `~/.gitconfig` so they win inside the folders, while gh's own git setting stays in place for everything else.
+4. **SSH (optional):** for accounts that use `git@github.com:` addresses, it creates a key (`~/.ssh/claude-gh-<nickname>`) or uses yours, trusts GitHub's official host fingerprints, adds the key to the right GitHub account with your OK, and checks GitHub recognises it as that account. The folder's config then sets `core.sshCommand` to use that key. No `~/.ssh/config` host aliases, and no changes to your remotes.
+5. **Adds a small `claude` function** to your shell profile. It finds the longest matching folder in `~/.claude-gh-accounts` and starts Claude Code with that account's `GH_TOKEN`. On Windows, a `claude.cmd` placed at the front of your user `PATH` does the same in Command Prompt.
+6. **Prevents common push errors:** new logins include the `workflow` permission (needed to push GitHub Actions files), existing logins are checked and fixed with your OK, and if GitHub ever rejects a saved login, git prints a hint with the fix.
 
 | File | Purpose |
 | --- | --- |
 | `~/.claude-gh-accounts` | `folder\|github-user\|nickname` list used by the `claude` function |
-| `~/.gitconfig-<nickname>` | Commit identity and credential helper for one account |
+| `~/.gitconfig-<nickname>` | Commit identity, credential helper and (with SSH) `core.sshCommand` for one account |
+| `~/.ssh/claude-gh-<nickname>`, `.pub` | The account's SSH key, only if you chose SSH and let the installer create one |
+| `~/.ssh/known_hosts` | GitHub's official host fingerprints, added once if missing (SSH only) |
 | `~/.gitconfig` | One `includeIf` line per account |
 | `~/.zshrc`, `~/.bashrc`, `~/.bash_profile` | The `claude` function, between `# >>> claude-gh-accounts >>>` markers |
 | `Documents\PowerShell\profile.ps1`, `Documents\WindowsPowerShell\profile.ps1` | The same function for PowerShell |
@@ -165,7 +172,8 @@ If the email is wrong, the project isn't inside an account folder. Move it there
 | You see | What it means | Fix |
 | --- | --- | --- |
 | `refusing to allow an OAuth App to create or update workflow ... without workflow scope` | Your login isn't allowed to change GitHub Actions files (`.github/workflows`). | `gh auth switch --user <you>`, then `gh auth refresh -h github.com -s workflow`. Or run the installer again, which offers to fix it. |
-| `Permission to OWNER/REPO.git denied to <other-user>` or `403` | Git used a different account than the one with access. | Check `git config user.email` (see above). Make sure the project is inside the right account folder and the remote is `https://`. |
+| `Permission to OWNER/REPO.git denied to <other-user>` or `403` | Git used a different account than the one with access. | Check `git config user.email` (see above) and make sure the project is inside the right account folder. Over SSH, also see the next row. |
+| `Permission denied (publickey)` or `ERROR: Permission to ... denied to <other-user>` over SSH | No key for this account, or the key belongs to another account. | Run the installer again and answer **yes** to the SSH question for this account. Check with `git config core.sshCommand` inside the project. |
 | `Repository not found` | The repo is private and this account can't see it, or it's the wrong account. | Same as above. Also check on github.com that this account has access to the repo. |
 | `Authentication failed` or `GitHub did not accept the saved login for <you>` | The saved login expired or was revoked. | `gh auth login` and sign in as that account again. |
 | `GH006: Protected branch update failed` or `Changes must be made through a pull request` | The branch is protected. | Push to a new branch and open a pull request: `git switch -c my-change`, `git push -u origin my-change`, `gh pr create`. |
@@ -177,15 +185,21 @@ Still stuck? [Open an issue](https://github.com/us-urvin/claude-gh-accounts/issu
 ## ❓ FAQ
 
 <details>
-<summary><b>Does it work with the VS Code / JetBrains extension or the Claude desktop app?</b></summary>
+<summary><b>Does it work with Claude Code on the web, the VS Code / JetBrains extension or the desktop app?</b></summary>
 
-Partly. Commits, pulls and pushes use the right account everywhere, because git itself handles that. The account switch for Claude Code's own GitHub actions (like opening pull requests) happens when you start `claude` from a terminal, since IDEs and the desktop app don't go through your terminal's setup.
+Not fully yet. It's built for Claude Code in the terminal. In IDEs and the desktop app, commits, pulls and pushes still use the right account (git handles that), but Claude Code's own GitHub actions, like opening pull requests, only switch when you start `claude` from a terminal. Support for the web and IDEs is coming soon.
 </details>
 
 <details>
-<summary><b>What about SSH remotes (<code>git@github.com:...</code>)?</b></summary>
+<summary><b>Does it work with SSH addresses (<code>git@github.com:...</code>)?</b></summary>
 
-Only HTTPS remotes are switched. SSH remotes keep using your SSH keys as before. To switch a project to HTTPS: `git remote set-url origin https://github.com/OWNER/REPO.git`.
+Yes. Answer **yes** to the SSH question for an account and the installer sets up a key for it, or uses yours. Inside that account's folder, git then uses that key for `git@github.com:` addresses, including `git clone`. HTTPS addresses keep working too.
+</details>
+
+<details>
+<summary><b>Will it change how my other projects work?</b></summary>
+
+No. Projects outside the account folders keep their usual settings, including GitHub CLI's own git login if you use it. Inside an account folder, that account's settings take priority.
 </details>
 
 <details>
@@ -212,7 +226,8 @@ Yes. The scripts are short, open and tested on every change. Your logins stay in
 2. Remove the `includeIf` lines from `~/.gitconfig` (`git config --global --edit`).
 3. Delete `~/.claude-gh-accounts` and the `~/.gitconfig-<nickname>` files.
 4. Windows only: delete `%LOCALAPPDATA%\claude-gh-accounts` and remove it from your user `PATH` (Start → "Edit environment variables for your account").
-5. Optional: `gh auth logout --user <name>` for accounts you no longer need.
+5. SSH only: delete `~/.ssh/claude-gh-<nickname>` and `.pub`, and remove the key at https://github.com/settings/keys.
+6. Optional: `gh auth logout --user <name>` for accounts you no longer need.
 
 ## 🤝 Contributing
 

@@ -4,7 +4,19 @@ All notable changes to this project are listed here. Versions follow [Semantic V
 
 ## [Unreleased]
 
-## [1.1.0] - 2026-11-21
+## [1.2.0] - 2026-11-21
+
+### Added
+- **SSH support:** accounts whose projects use `git@github.com:` addresses get their own SSH key.
+  The installer creates one (or uses yours), trusts GitHub's official host fingerprints, adds the
+  key to the right GitHub account with your OK, checks GitHub recognises it as that account, and
+  sets `core.sshCommand` for the account's folder. No host aliases, no remote changes.
+- README: clearer scope (built for Claude Code in the terminal; web and IDE support coming soon).
+
+### Fixed
+- Projects outside the account folders now really keep their usual settings: the installer no
+  longer removes GitHub CLI's global git login. It keeps the per-folder entries last in
+  `~/.gitconfig` instead, so they still win inside the folders.
 
 ### Added
 - Windows: `claude` now switches accounts in Command Prompt too (`claude.cmd`).
@@ -32,6 +44,7 @@ First public release.
 - Re-running the installer adds accounts, moves an account to a new folder, or updates names and emails.
 - Tests and CI on Linux, macOS (bash 3.2) and Windows (PowerShell 5.1 and 7).
 
-[Unreleased]: https://github.com/us-urvin/claude-gh-accounts/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/us-urvin/claude-gh-accounts/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/us-urvin/claude-gh-accounts/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/us-urvin/claude-gh-accounts/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/us-urvin/claude-gh-accounts/releases/tag/v1.0.0

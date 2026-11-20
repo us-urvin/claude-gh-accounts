@@ -256,16 +256,113 @@ function Show-Accounts($title, $bullet) {
 $firstRun = ($map.Count -eq 0)
 if ($map.Count) { Write-Host ''; Show-Accounts 'Already set up' $S.Arrow }
 
-# gh's own login can point all of github.com at gh's *active* account, placed after (and
-# overriding) the per-folder settings. Remove it; the per-folder helpers replace it.
-# On Windows gh writes it as:  !'C:\Program Files\GitHub CLI\gh.exe' auth git-credential
-function Remove-GlobalGhHelper {
-    $old = git config --global --get-all credential.https://github.com.helper 2>$null | Out-String
-    if ($old -match 'gh(\.exe)?[''"]?\s+auth\s+git-credential') {
-        git config --global --unset-all credential.https://github.com.helper
-        git config --global --unset-all credential.https://gist.github.com.helper 2>$null
-        Ok 'Removed an old GitHub CLI setting that would have mixed up your accounts'
+# gh's own login can point all of github.com at gh's *active* account. Git reads settings top to
+# bottom and the last one wins, so if that setting sits below the per-folder ones it overrides
+# them. Move the per-folder entries to the end of ~/.gitconfig. gh's setting stays in place, so
+# repos outside the account folders keep working exactly as before.
+function Put-AccountsLast {
+    foreach ($e in $map) {
+        $key = "includeIf.gitdir/i:$(GitDir $e.Folder)"
+        $path = git config --global --get "$key.path" 2>$null
+        if (-not $path) { continue }
+        git config --global --remove-section $key 2>$null
+        git config --global "$key.path" "$path"
     }
+}
+
+# ---- SSH (only for accounts whose projects use git@github.com: addresses)
+# Prefer Git for Windows' own ssh tools: they are the ones git uses.
+function Find-SshTool($name) {
+    $git = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($git) {
+        $dir = Split-Path -Parent $git.Source
+        for ($i = 0; $i -lt 3 -and $dir; $i++) {
+            $dir = Split-Path -Parent $dir
+            if ($dir) { $p = Join-Path $dir "usr\bin\$name.exe"; if (Test-Path $p) { return $p } }
+        }
+    }
+    $c = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($c) { return $c.Source }
+    return $null
+}
+# Which GitHub account does this key log in as? (empty if none)
+function Ssh-WhoAmI($ssh, $keyFwd) {
+    $out = & $ssh -i $keyFwd -o IdentitiesOnly=yes -o ConnectTimeout=15 -T git@github.com 2>&1 | ForEach-Object { "$_" }
+    foreach ($l in $out) { if ($l -match '^Hi ([^!]+)!') { return $Matches[1] } }
+    return ''
+}
+# Trust GitHub's SSH servers using the fingerprints from GitHub's API (fetched over HTTPS),
+# so there is no "authenticity of host can't be established" question.
+function Trust-GitHubHost($keygen) {
+    $kh = Join-Path $HOME '.ssh\known_hosts'
+    if (Test-Path $kh) { & $keygen -F github.com -f ($kh -replace '\\', '/') *> $null; if ($LASTEXITCODE -eq 0) { return } }
+    $keys = @(gh api meta --jq '.ssh_keys[]' 2>$null | Where-Object { $_ })
+    if (-not $keys.Count) { return }
+    $text = (($keys | ForEach-Object { "github.com $_" }) -join "`n") + "`n"
+    if ((Test-Path $kh) -and (Get-Item $kh).Length -gt 0 -and -not ((Get-Content $kh -Raw).EndsWith("`n"))) { $text = "`n" + $text }
+    [IO.File]::AppendAllText($kh, $text, (New-Object Text.ASCIIEncoding))
+    Ok "Added GitHub's official SSH fingerprints"
+}
+# Returns the path of a working key for this account, or '' (HTTPS only).
+function Setup-Ssh($label, $u) {
+    $ssh = Find-SshTool 'ssh'; $keygen = Find-SshTool 'ssh-keygen'
+    if (-not $ssh -or -not $keygen) { Warn "SSH isn't installed on this computer, so this account will use HTTPS only."; return '' }
+    New-Item -ItemType Directory -Force -Path (Join-Path $HOME '.ssh') | Out-Null
+    $key = Join-Path $HOME ".ssh\claude-gh-$label"
+    if (Test-Path $key) {
+        Ok "Using the SSH key made earlier: $(Pretty $key)"
+    } else {
+        $custom = Ask "Already have an SSH key for '$u'? Type its path, or just press Enter to create one" '' 'For example  ~\.ssh\id_ed25519_work   (the private key, not the .pub file)'
+        if ($custom) {
+            if ($custom.StartsWith('~')) { $custom = $HOME + $custom.Substring(1) }
+            $key = $custom
+            if (-not (Test-Path $key) -or -not (Test-Path "$key.pub")) {
+                Warn "Couldn't find both $(Pretty $key) and $(Pretty $key).pub - this account will use HTTPS only."; return ''
+            }
+        } else {
+            # Start-Process passes the command line as-is, so the empty passphrase ("") survives
+            # on both Windows PowerShell 5.1 and PowerShell 7
+            $argLine = "-q -t ed25519 -N `"`" -C `"claude-gh-accounts $label`" -f `"$($key -replace '\\', '/')`""
+            $p = Start-Process -FilePath $keygen -ArgumentList $argLine -NoNewWindow -Wait -PassThru
+            if ($p.ExitCode -ne 0 -or -not (Test-Path $key)) { Warn "Couldn't create an SSH key - this account will use HTTPS only."; return '' }
+            Ok "Created a new SSH key: $(Pretty $key)"
+        }
+    }
+    $keyFwd = $key -replace '\\', '/'
+    Trust-GitHubHost $keygen
+
+    $who = Ssh-WhoAmI $ssh $keyFwd
+    if ($who -and $who -ne $u) {
+        Warn "That key is already linked to GitHub account '$who', not '$u'."
+        Info 'GitHub allows each key on one account only. Run the installer again and pick another key.'
+        return ''
+    }
+    if (-not $who) {
+        Doing "Adding the key to GitHub account $u"
+        $title = "claude-gh-accounts ($env:COMPUTERNAME)"
+        $saved = $env:GH_TOKEN
+        try {
+            $env:GH_TOKEN = "$(gh auth token --user $u 2>$null)".Trim()
+            $out = gh ssh-key add "$key.pub" --title $title 2>&1 | Out-String
+            $failed = ($LASTEXITCODE -ne 0)
+        } finally { $env:GH_TOKEN = $saved }
+        if ($failed -and $out -match 'scope|403|404') {
+            Info "GitHub needs your OK to add SSH keys for $u. One more browser step:"
+            gh auth switch --hostname github.com --user $u *> $null
+            gh auth refresh --hostname github.com --scopes admin:public_key
+            try {
+                $env:GH_TOKEN = "$(gh auth token --user $u 2>$null)".Trim()
+                gh ssh-key add "$key.pub" --title $title *> $null
+            } finally { $env:GH_TOKEN = $saved }
+        }
+        $who = Ssh-WhoAmI $ssh $keyFwd
+    }
+    if ($who -and $who -eq $u) { Ok "SSH works for $u"; return $keyFwd }
+    Warn "GitHub didn't accept the key yet. Add it by hand, then run the installer again:"
+    Info "1. Open  https://github.com/settings/ssh/new  (signed in as $u)"
+    Info '2. Paste this key and save:'
+    Dim "   $((Get-Content "$key.pub" -Raw).Trim())"
+    return ''
 }
 
 # Pushes that change GitHub Actions files (.github/workflows) need the "workflow" permission.
@@ -354,8 +451,18 @@ while ($another) {
     }
     Ensure-WorkflowScope $user
 
+    $sshKey = ''
+    $sshDefault = if (Test-Path (Join-Path $HOME ".ssh\claude-gh-$label")) { 'y' } else { 'n' }
+    Write-Host ''
+    Dim 'Project addresses look like  https://github.com/...  or  git@github.com:...  (SSH).'
+    Dim "HTTPS always works. If you're not sure, answer no - you can add SSH later."
+    if (AskYes "Do your '$label' projects use SSH addresses (git@github.com:...)?" $sshDefault) {
+        $sshKey = Setup-Ssh $label $user
+    }
+
     # Per-folder git settings: commit identity + which account git uses for github.com
     # The helper hands git this account's token, and prints a hint if GitHub ever rejects it.
+    # With SSH, core.sshCommand picks this account's key for git@github.com: addresses.
     # Written directly (not via "git config") because Windows PowerShell mangles quotes and empty values passed to programs
     $cfg = Join-Path $HOME ".gitconfig-$label"
     $helper = '!f() { case "$1" in get) echo "username=' + $user + '"; echo "password=$(gh auth token --user ' + $user + ')" ;; ' +
@@ -363,6 +470,7 @@ while ($another) {
               $RepoUrl + '#-troubleshooting" >&2 ;; esac; }; f'
     $cfgText = "[user]`n`tname = $(GitQuote $name)`n`temail = $(GitQuote $email)`n" +
                "[credential `"https://github.com`"]`n`thelper =`n`thelper = $(GitQuote $helper)`n"
+    if ($sshKey) { $cfgText += "[core]`n`tsshCommand = $(GitQuote "ssh -i '$sshKey' -o IdentitiesOnly=yes")`n" }
     [IO.File]::WriteAllText($cfg, $cfgText, (New-Object Text.UTF8Encoding($false)))
     $cfgFwd = $cfg -replace '\\', '/'
 
@@ -381,11 +489,11 @@ while ($another) {
     Save-Map
     Ok "Repos in $(Pretty $folder) will now use $user"
 
-    Remove-GlobalGhHelper
+    Put-AccountsLast
     $another = AskYes 'Add another GitHub account?' 'n'
 }
 if ($map.Count -eq 0) { Fail "No accounts are set up yet. Run the installer again when you're ready." }
-Remove-GlobalGhHelper
+Put-AccountsLast
 
 # ================================================================ Step 5
 Step 5 'Turning on auto-switching' 'Teaching the claude command to pick the right account by itself.'
@@ -549,6 +657,7 @@ CardLine '1' $C.G2 '  Close this window and open a ' '' 'new' $C.Bold ' PowerShe
 CardLine "   (This one doesn't know about the new setup yet.)" $C.Dim
 CardLine '2' $C.G2 '  Go to an account folder:   ' '' "cd $(Pretty $first.Folder)" $C.Accent
 CardLine '3' $C.G2 '  Download a project:        ' '' 'git clone https://github.com/OWNER/REPO.git' $C.Accent
+CardLine '   (or  git clone git@github.com:OWNER/REPO.git  if you set up SSH)' $C.Dim
 CardLine '4' $C.G2 '  Go into it and type:       ' '' 'claude' $C.Accent
 CardLine "   You'll see " '' "GitHub account: $($first.User)" $C.Accent " - that's it working!" ''
 CardBottom

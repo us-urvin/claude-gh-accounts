@@ -251,14 +251,91 @@ if [ -s "$MAP_FILE" ]; then
   card_bottom
 fi
 
-# gh's own login can point all of github.com at gh's *active* account, placed after (and
-# overriding) the per-folder settings. Remove it; the per-folder helpers replace it.
-remove_global_gh_helper() {
-  if git config --global --get-all credential.https://github.com.helper 2>/dev/null \
-       | grep -Eq "gh(\.exe)?['\"]?[[:space:]]+auth[[:space:]]+git-credential"; then
-    git config --global --unset-all credential.https://github.com.helper
-    git config --global --unset-all credential.https://gist.github.com.helper 2>/dev/null || true
-    ok "Removed an old GitHub CLI setting that would have mixed up your accounts"
+# gh's own login can point all of github.com at gh's *active* account. Git reads settings top to
+# bottom and the last one wins, so if that setting sits below the per-folder ones it overrides
+# them. Move the per-folder entries to the end of ~/.gitconfig. gh's setting stays in place, so
+# repos outside the account folders keep working exactly as before.
+put_accounts_last() {
+  local f u l path
+  while IFS='|' read -r f u l; do
+    [ -z "$f" ] && continue
+    path="$(git config --global --get "includeIf.gitdir/i:$f/.path" 2>/dev/null)" || continue
+    git config --global --remove-section "includeIf.gitdir/i:$f/" 2>/dev/null || true
+    git config --global "includeIf.gitdir/i:$f/.path" "$path"
+  done < "$MAP_FILE"
+}
+
+# ---- SSH (only for accounts whose projects use git@github.com: addresses)
+same_user() { [ "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')" ]; }
+
+# Which GitHub account does this key log in as? (empty if none)
+ssh_whoami() {
+  ssh -i "$1" -o IdentitiesOnly=yes -o ConnectTimeout=15 -T git@github.com 2>&1 </dev/null \
+    | sed -n 's/^Hi \([^!]*\)!.*/\1/p' | head -n1
+}
+
+# Trust GitHub's SSH servers using the fingerprints from GitHub's API (fetched over HTTPS),
+# so there is no "authenticity of host can't be established" question.
+trust_github_host() {
+  local kh="$HOME/.ssh/known_hosts" keys
+  ssh-keygen -F github.com -f "$kh" >/dev/null 2>&1 && return 0
+  keys="$(gh api meta --jq '.ssh_keys[]' 2>/dev/null)" || return 0
+  [ -n "$keys" ] || return 0
+  printf '%s\n' "$keys" | sed 's/^/github.com /' >> "$kh"
+  ok "Added GitHub's official SSH fingerprints"
+}
+
+# Sets ssh_key to a working key for this account, or leaves it empty.
+setup_ssh() { # $1 = label, $2 = GitHub user
+  local key="$HOME/.ssh/claude-gh-$1" custom who out tok
+  ssh_key=""
+  if ! has ssh || ! has ssh-keygen; then
+    warn "SSH isn't installed on this computer, so this account will use HTTPS only."; return 0
+  fi
+  mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+  if [ -f "$key" ]; then
+    ok "Using the SSH key made earlier: $(pretty "$key")"
+  else
+    custom="$(ask "Already have an SSH key for '$2'? Type its path, or just press Enter to create one" "" "For example  ~/.ssh/id_ed25519_work   (the private key, not the .pub file)")"
+    if [ -n "$custom" ]; then
+      key="${custom/#\~/$HOME}"
+      if [ ! -f "$key" ] || [ ! -f "$key.pub" ]; then
+        warn "Couldn't find both $(pretty "$key") and $(pretty "$key").pub - this account will use HTTPS only."; return 0
+      fi
+    else
+      ssh-keygen -q -t ed25519 -N "" -C "claude-gh-accounts $1" -f "$key" </dev/null \
+        || { warn "Couldn't create an SSH key - this account will use HTTPS only."; return 0; }
+      ok "Created a new SSH key: $(pretty "$key")"
+    fi
+  fi
+  trust_github_host
+
+  who="$(ssh_whoami "$key")"
+  if [ -n "$who" ] && ! same_user "$who" "$2"; then
+    warn "That key is already linked to GitHub account '$who', not '$2'."
+    info "GitHub allows each key on one account only. Run the installer again and pick another key."
+    return 0
+  fi
+  if [ -z "$who" ]; then
+    printf '  %s%s%s Adding the key to GitHub account %s%s%s\n' "$CYN" "$S_ARROW" "$R" "$B" "$2" "$R"
+    tok="$(gh auth token --user "$2" 2>/dev/null)"
+    if ! out="$(GH_TOKEN="$tok" gh ssh-key add "$key.pub" --title "claude-gh-accounts ($(hostname 2>/dev/null || echo computer))" 2>&1)" \
+       && printf '%s' "$out" | grep -qi 'scope\|403\|404'; then
+      info "GitHub needs your OK to add SSH keys for $2. One more browser step:"
+      gh auth switch --hostname github.com --user "$2" >/dev/null 2>&1
+      gh auth refresh --hostname github.com --scopes admin:public_key </dev/tty
+      tok="$(gh auth token --user "$2" 2>/dev/null)"
+      GH_TOKEN="$tok" gh ssh-key add "$key.pub" --title "claude-gh-accounts ($(hostname 2>/dev/null || echo computer))" >/dev/null 2>&1
+    fi
+    who="$(ssh_whoami "$key")"
+  fi
+  if [ -n "$who" ] && same_user "$who" "$2"; then
+    ssh_key="$key"; ok "SSH works for $B$2$R"
+  else
+    warn "GitHub didn't accept the key yet. Add it by hand, then run the installer again:"
+    info "1. Open  https://github.com/settings/ssh/new  (signed in as $2)"
+    info "2. Paste this key and save:"
+    printf '       %s%s%s\n' "$D" "$(cat "$key.pub")" "$R"
   fi
 }
 
@@ -344,8 +421,18 @@ while [ "$another" -eq 1 ]; do
   fi
   ensure_workflow_scope "$user"
 
+  ssh_key=""
+  ssh_default=n; [ -f "$HOME/.ssh/claude-gh-$label" ] && ssh_default=y
+  printf '\n'
+  dim "Project addresses look like  https://github.com/...  or  git@github.com:...  (SSH)."
+  dim "HTTPS always works. If you're not sure, answer no - you can add SSH later."
+  if ask_yes "Do your '$label' projects use SSH addresses (git@github.com:...)?" "$ssh_default"; then
+    setup_ssh "$label" "$user"
+  fi
+
   # Per-folder git settings: commit identity + which account git uses for github.com
   # The helper hands git this account's token, and prints a hint if GitHub ever rejects it.
+  # With SSH, core.sshCommand picks this account's key for git@github.com: addresses.
   cfg="$HOME/.gitconfig-$label"
   rm -f "$cfg"
   git config --file "$cfg" user.name "$name"
@@ -353,6 +440,7 @@ while [ "$another" -eq 1 ]; do
   git config --file "$cfg" --add 'credential.https://github.com.helper' ''
   git config --file "$cfg" --add 'credential.https://github.com.helper' \
     "!f() { case \"\$1\" in get) echo \"username=$user\"; echo \"password=\$(gh auth token --user $user)\" ;; erase) echo \"claude-gh-accounts: GitHub did not accept the saved login for $user. Log in again with: gh auth login   Help: $REPO_URL#-troubleshooting\" >&2 ;; esac; }; f"
+  [ -n "$ssh_key" ] && git config --file "$cfg" core.sshCommand "ssh -i '$ssh_key' -o IdentitiesOnly=yes"
 
   # Forget earlier entries for this folder or this label (e.g. the label moved to a new folder)
   tmp="$(mktemp)"
@@ -372,11 +460,11 @@ while [ "$another" -eq 1 ]; do
   git config --global --replace-all "includeIf.gitdir/i:$folder/.path" "$cfg"
   ok "Repos in $(pretty "$folder") will now use $B$user$R"
 
-  remove_global_gh_helper
+  put_accounts_last
   ask_yes "Add another GitHub account?" n && another=1 || another=0
 done
 [ -s "$MAP_FILE" ] || fail "No accounts are set up yet. Run the installer again when you're ready."
-remove_global_gh_helper
+put_accounts_last
 
 # ================================================================ Step 5
 step 5 "Turning on auto-switching" "Teaching the claude command to pick the right account by itself."
@@ -446,6 +534,7 @@ card_line "${G2}${B}1${R}  Close this window and open a ${B}new${R} terminal."
 card_line "   ${D}(This one doesn't know about the new setup yet.)$R"
 card_line "${G2}${B}2${R}  Go to an account folder:   ${CYN}cd $(pretty "$first_folder")$R"
 card_line "${G2}${B}3${R}  Download a project:        ${CYN}git clone https://github.com/OWNER/REPO.git$R"
+card_line "   ${D}(or  git clone git@github.com:OWNER/REPO.git  if you set up SSH)$R"
 card_line "${G2}${B}4${R}  Go into it and type:       ${CYN}claude$R"
 card_line "   You'll see ${CYN}GitHub account: $first_user$R - that's it working!"
 card_bottom

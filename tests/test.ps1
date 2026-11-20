@@ -25,7 +25,12 @@ New-Item -ItemType Directory -Force $bin | Out-Null
 Set-Content (Join-Path $bin 'claude.cmd') @('@echo GH_TOKEN=%GH_TOKEN%', '@echo ARGS=%*') -Encoding ascii
 Set-Content (Join-Path $bin 'gh.cmd') '@if "%4"=="nobody" (exit /b 1) else (echo TOKEN-for-%4)' -Encoding ascii
 # Same fake for git's credential helper, which runs in Git for Windows' sh (it can't run .cmd files)
-[IO.File]::WriteAllText((Join-Path $bin 'gh'), "#!/bin/sh`necho `"TOKEN-for-`$4`"`n")
+[IO.File]::WriteAllText((Join-Path $bin 'gh'), (@(
+    '#!/bin/sh',
+    'case "$1 $2" in',
+    '  "auth token") echo "TOKEN-for-$4" ;;',
+    '  "auth git-credential") [ "$3" = get ] && { echo username=active-user; echo password=TOKEN-active; } ;;',
+    'esac') -join "`n") + "`n")
 $oldHome = $HOME; $oldPath = $env:Path
 try {
     Set-Variable -Name HOME -Value $T -Force -Scope Global
@@ -84,9 +89,11 @@ try {
     $gq  = [regex]::Match($src, '(?m)^function GitQuote.*$').Value
     $hlp = [regex]::Match($src, '(?s)    \$helper = .*?f''\r?\n').Value
     $txt = [regex]::Match($src, '(?s)    \$cfgText = .*?`n"\r?\n').Value
-    Check 'config-building lines found' $true ([bool]($gq -and $hlp -and $txt))
+    $sshl = [regex]::Match($src, '(?m)^    if \(\$sshKey\) \{ \$cfgText \+= .*$').Value
+    Check 'config-building lines found' $true ([bool]($gq -and $hlp -and $txt -and $sshl))
     $user = 'alice'; $name = 'Alice "Al" A'; $email = 'alice@example.com'; $RepoUrl = 'https://github.com/us-urvin/claude-gh-accounts'
-    . ([scriptblock]::Create("$gq`n$hlp`n$txt"))
+    $sshKey = 'C:/Users/Jane Doe/.ssh/claude-gh-work'   # a path with a space
+    . ([scriptblock]::Create("$gq`n$hlp`n$txt`n$sshl"))
     $cfgFile = Join-Path $T '.gitconfig-work'
     [IO.File]::WriteAllText($cfgFile, $cfgText, (New-Object Text.UTF8Encoding($false)))
     $repo = Join-Path $T 'code\work\repo'
@@ -106,6 +113,26 @@ try {
         Check 'credentials come from gh' 'username=alice password=TOKEN-for-alice' ((@($fill) | Where-Object { $_ -match '^(username|password)=' }) -join ' ')
         $hint = cmd /c "git -C `"$repo`" credential reject < `"$r`" 2>&1" | Out-String
         Check 'rejected login prints a helpful hint' $true ($hint -match 'did not accept the saved login for alice.*#-troubleshooting')
+        Check 'SSH: uses the account key (path with a space)' "ssh -i 'C:/Users/Jane Doe/.ssh/claude-gh-work' -o IdentitiesOnly=yes" (git -C $repo config core.sshCommand)
+
+        Write-Host 'Repos outside the account folders'
+        $gd  = [regex]::Match($src, '(?m)^function GitDir.*$').Value
+        $pal = [regex]::Match($src, '(?s)function Put-AccountsLast \{.*?\r?\n\}').Value
+        Check 'Put-AccountsLast found' $true ([bool]($gd -and $pal))
+        . ([scriptblock]::Create("$gd`n$pal"))
+        $map = @([pscustomobject]@{ Folder = "$T\code\work"; User = 'alice'; Label = 'work' })
+        $inside = Join-Path $T 'code\work\repo2'; $outside = Join-Path $T 'elsewhere\repo'
+        New-Item -ItemType Directory -Force $inside, $outside | Out-Null
+        git -C $inside init -q; git -C $outside init -q
+        # The account's includeIf, then gh's global setting *below* it (what "gh auth login" does)
+        [IO.File]::WriteAllText($env:GIT_CONFIG_GLOBAL,
+            "[includeIf `"gitdir/i:$(GitDir "$T\code\work")`"]`n`tpath = $($cfgFile -replace '\\', '/')`n" +
+            "[credential `"https://github.com`"]`n`thelper =`n`thelper = !gh auth git-credential`n")
+        $fillAt = { param($r) ((@(cmd /c "git -C `"$r`" credential fill < `"$q`" 2>nul") | Where-Object { $_ -match '^(username|password)=' }) -join ' ') }
+        Check 'without the fix, gh overrides the folder' 'username=active-user password=TOKEN-active' (& $fillAt $inside)
+        Put-AccountsLast
+        Check 'after the fix, the folder account wins'   'username=alice password=TOKEN-for-alice' (& $fillAt $inside)
+        Check 'outside folders: gh setting still works'  'username=active-user password=TOKEN-active' (& $fillAt $outside)
     } finally {
         $env:GIT_CONFIG_GLOBAL = $oldGlobal; $env:GIT_CONFIG_NOSYSTEM = $oldNoSys
     }

@@ -19,3 +19,4 @@ Only the latest version on `main` is supported. The install commands always fetc
 - Tokens are never written to disk by these scripts. They stay in GitHub CLI's own secure storage (macOS Keychain, Windows Credential Manager, or the Linux keyring).
 - The per-folder git credential helper asks `gh auth token --user <name>` for a token each time git needs one.
 - The `claude` wrapper sets `GH_TOKEN` only for the Claude Code process it starts. On Windows it restores the previous value afterwards.
+- SSH (optional, per account): keys are created by your system's `ssh-keygen` in `~/.ssh` (`claude-gh-<nickname>`), with your user's normal file permissions. They have no passphrase, so they work without prompts, just like many default setups. Use your own passphrase-protected key instead by typing its path when asked. GitHub's host fingerprints come from GitHub's API over HTTPS, not from a first-time network guess.
