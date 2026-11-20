@@ -282,7 +282,7 @@ while [ "$another" -eq 1 ]; do
   folder="${folder/#\~/$HOME}"
   case "$folder" in *'|'*) warn "The folder name can't contain '|'."; count=$((count - 1)); continue ;; esac
   mkdir -p "$folder" || { warn "Couldn't create $folder"; count=$((count - 1)); continue; }
-  folder="$(cd "$folder" && pwd)"
+  folder="$(cd "$folder" && pwd -P)"  # real path: git matches folders by their real location
   if [ "$folder" = "/" ] || [ "$folder" = "$HOME" ]; then
     warn "Please pick a folder of its own, not $(pretty "$folder") itself."; count=$((count - 1)); continue
   fi
@@ -366,12 +366,14 @@ LAUNCHER="$(cat <<'EOF'
 # run the installer again to change accounts.
 unalias claude 2>/dev/null
 claude() {
-  local map="$HOME/.claude-gh-accounts" here="${PWD%/}/" user="" best=0 f u l tok
+  local map="$HOME/.claude-gh-accounts" here="${PWD%/}/" phys="$(pwd -P 2>/dev/null)/" user="" best=0 f u l tok
   if [ -f "$map" ]; then
     while IFS='|' read -r f u l; do
       if [ -z "$f" ] || [ -z "$u" ]; then continue; fi
       f="${f%/}/"
-      case "$here" in "$f"*) if [ ${#f} -gt $best ]; then user="$u"; best=${#f}; fi ;; esac
+      if [ "${here#"$f"}" != "$here" ] || [ "${phys#"$f"}" != "$phys" ]; then
+        if [ ${#f} -gt $best ]; then user="$u"; best=${#f}; fi
+      fi
     done < "$map"
   fi
   if [ -n "$user" ]; then

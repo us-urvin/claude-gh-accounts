@@ -11,7 +11,7 @@ check() { # $1 = description, $2 = expected, $3 = actual
   else failed=$((failed + 1)); printf '  FAIL %s\n       expected: %s\n       actual:   %s\n' "$1" "$2" "$3"; fi
 }
 
-T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+T="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$T"' EXIT
 BIN="$T/bin"
 if command -v cygpath >/dev/null 2>&1; then # Git Bash on Windows: give native git C:/ paths
   export MSYS2_ARG_CONV_EXCL='*'; T="$(cygpath -m "$T")"
@@ -44,6 +44,10 @@ check "not logged in: runs without a token"      "GH_TOKEN=none"            "$(r
 check "outside all folders: no token"            "GH_TOKEN=none"            "$(run elsewhere)"
 out="$(bash -O expand_aliases -c "cd '$LT/code/work' && alias claude=false && source '$LT/launcher.sh' && claude" 2>&1 | tail -n1)"
 check "an old 'claude' alias doesn't break it"   "GH_TOKEN=TOKEN-for-alice" "$out"
+if ! command -v cygpath >/dev/null 2>&1; then # real symlinks aren't available in Git Bash on Windows
+  ln -s "$LT/code/work" "$LT/shortcut"
+  check "folder reached through a symlink"       "GH_TOKEN=TOKEN-for-alice" "$(run shortcut/repo)"
+fi
 
 echo "Git config"
 : > "$T/.claude-gh-accounts"; MAP_FILE="$T/.claude-gh-accounts"
