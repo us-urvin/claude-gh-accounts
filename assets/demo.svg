@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 700" width="880" height="700" role="img" aria-labelledby="t d">
+  <title id="t">claude-gh-accounts installer</title>
+  <desc id="d">The installer asks for the account nickname, GitHub username, folder, name and email, shows a quick check, then logs in.</desc>
+  <defs>
+    <linearGradient id="win" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c1a33"/>
+      <stop offset="1" stop-color="#141327"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <rect x="20" y="16" width="840" height="664" rx="14" fill="url(#win)" stroke="#3a3760" filter="url(#shadow)"/>
+  <!-- title bar -->
+  <path d="M20 30 a14 14 0 0 1 14 -14 h812 a14 14 0 0 1 14 14 v22 h-840 z" fill="#25223f"/>
+  <circle cx="46" cy="34" r="7" fill="#ff5f57"/>
+  <circle cx="70" cy="34" r="7" fill="#febc2e"/>
+  <circle cx="94" cy="34" r="7" fill="#28c840"/>
+  <text x="440" y="39" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#9a96c4">claude-gh-accounts&#160;installer</text>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="15" fill="#e6e4f5" xml:space="preserve" style="white-space:pre">
+    <text x="44" y="84"><tspan fill="#5ee7ff">~</tspan>&#160;$&#160;curl&#160;-fsSL&#160;https://raw.githubusercontent.com/.../install.sh&#160;|&#160;bash</text>
+
+    <g shape-rendering="crispEdges">
+      <rect x="56" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="66" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="76" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="96" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="96" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="136" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="146" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="156" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="176" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="176" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="196" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="196" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="216" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="216" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="226" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="236" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="256" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="256" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="266" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="266" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="276" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="326" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="336" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="366" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="366" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="376" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="386" y="104" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="386" y="113" width="9" height="8" rx="1.5" fill="#ff7ad9"/>
+      <rect x="56" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="66" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="76" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="96" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="96" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="106" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="116" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="136" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="136" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="146" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="156" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="156" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="176" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="186" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="196" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="196" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="216" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="216" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="226" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="236" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="256" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="256" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="266" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="276" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="296" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="306" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="326" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="336" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="346" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="346" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="366" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="366" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="386" y="122" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="386" y="131" width="9" height="8" rx="1.5" fill="#d38bff"/>
+      <rect x="56" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="66" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="76" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="96" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="106" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="116" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="136" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="146" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="156" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="176" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="186" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="196" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="216" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="216" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="236" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="236" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="256" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="256" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="266" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="286" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="286" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="306" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="316" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="316" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="326" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="346" y="155" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="356" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="366" y="146" width="9" height="8" rx="1.5" fill="#8fb4ff"/>
+      <rect x="56" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="56" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="66" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="76" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="76" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="96" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="106" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="116" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="136" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="146" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="156" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="176" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="186" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="196" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="216" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="226" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="236" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="236" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="256" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="256" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="276" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="286" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="286" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="316" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="316" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="346" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="356" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="356" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="366" y="164" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+      <rect x="366" y="173" width="9" height="8" rx="1.5" fill="#5ee7ff"/>
+    </g>
+    <text x="56" y="210" font-weight="700">One&#160;computer.&#160;Many&#160;GitHub&#160;accounts.&#160;Zero&#160;mix-ups.</text>
+
+    <text x="44" y="246"><tspan fill="#d38bff">■■■■</tspan><tspan fill="#5d5a80">□□</tspan>&#160;&#160;<tspan fill="#8a87ad">STEP&#160;4&#160;OF&#160;6</tspan></text>
+    <text x="44" y="268" font-weight="700">Your&#160;GitHub&#160;accounts</text>
+    <text x="44" y="290" fill="#8a87ad">Each&#160;account&#160;gets&#160;its&#160;own&#160;folder.&#160;That's&#160;the&#160;whole&#160;trick.</text>
+
+    <text x="44" y="330"><tspan fill="#ff7ad9" font-weight="700">?</tspan>&#160;<tspan font-weight="700">What's&#160;the&#160;GitHub&#160;username&#160;for&#160;'work'?</tspan></text>
+    <text x="64" y="352" fill="#8a87ad">The&#160;name&#160;you&#160;log&#160;in&#160;with,&#160;shown&#160;at&#160;github.com/&lt;username&gt;</text>
+    <text x="64" y="374"><tspan fill="#5ee7ff">›</tspan>&#160;jane-at-acme</text>
+
+    <text x="44" y="414" fill="#8fb4ff">╭─&#160;<tspan fill="#e6e4f5" font-weight="700">Quick&#160;check</tspan>&#160;─────────────────────────────</text>
+    <text x="44" y="436"><tspan fill="#8fb4ff">│</tspan>&#160;&#160;<tspan fill="#8a87ad">Nickname</tspan>&#160;&#160;<tspan font-weight="700">work</tspan></text>
+    <text x="44" y="458"><tspan fill="#8fb4ff">│</tspan>&#160;&#160;<tspan fill="#8a87ad">GitHub&#160;&#160;</tspan>&#160;&#160;<tspan font-weight="700">jane-at-acme</tspan></text>
+    <text x="44" y="480"><tspan fill="#8fb4ff">│</tspan>&#160;&#160;<tspan fill="#8a87ad">Folder&#160;&#160;</tspan>&#160;&#160;<tspan font-weight="700">~/code/work</tspan></text>
+    <text x="44" y="502"><tspan fill="#8fb4ff">│</tspan>&#160;&#160;<tspan fill="#8a87ad">Commits&#160;</tspan>&#160;&#160;<tspan font-weight="700">Jane&#160;Doe</tspan>&#160;<tspan fill="#8a87ad">&lt;jane@acme.com&gt;</tspan></text>
+    <text x="44" y="524" fill="#8fb4ff">╰───────────────────────────────────────────</text>
+
+    <text x="44" y="564"><tspan fill="#ff7ad9" font-weight="700">?</tspan>&#160;<tspan font-weight="700">Does&#160;this&#160;look&#160;right?</tspan>&#160;<tspan fill="#8a87ad">(Y/n)</tspan>&#160;<tspan fill="#5ee7ff">›</tspan>&#160;y</text>
+    <text x="44" y="600"><tspan fill="#5ef2a0">✔</tspan>&#160;Logged&#160;in&#160;as&#160;<tspan font-weight="700">jane-at-acme</tspan></text>
+    <text x="44" y="622"><tspan fill="#5ef2a0">✔</tspan>&#160;Repos&#160;in&#160;~/code/work&#160;will&#160;now&#160;use&#160;<tspan font-weight="700">jane-at-acme</tspan></text>
+    <text x="44" y="654"><tspan fill="#ff6b8b">♥</tspan>&#160;&#160;<tspan font-weight="700">Enjoying&#160;it?&#160;A&#160;star&#160;on&#160;GitHub&#160;helps&#160;other&#160;people&#160;find&#160;it.</tspan></text>
+  </g>
+</svg>

@@ -47,7 +47,9 @@ check "an old 'claude' alias doesn't break it"   "GH_TOKEN=TOKEN-for-alice" "$ou
 
 echo "Git config"
 : > "$T/.claude-gh-accounts"; MAP_FILE="$T/.claude-gh-accounts"
-ok() { :; }; info() { :; }
+ok() { :; }; info() { :; }; pretty() { printf '%s' "$1"; }
+# shellcheck disable=SC2034  # color codes used by configure()
+B="" R=""
 blk="$(sed -n '/# Per-folder git settings/,/ok "Repos in/p' "$SCRIPT")"
 eval "configure() { $blk
 }"

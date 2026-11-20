@@ -1,33 +1,118 @@
-# Claude Code + automatic GitHub account switching (Windows)
+# claude-gh-accounts: use several GitHub accounts with Claude Code (Windows)
+# https://github.com/us-urvin/claude-gh-accounts
+#
 # Run:   powershell -ExecutionPolicy Bypass -File .\install.ps1
 #   or:  irm https://raw.githubusercontent.com/us-urvin/claude-gh-accounts/main/install.ps1 | iex
 # Safe to run again any time to add accounts or change folders.
+#
+# Note for contributors: keep this file pure ASCII. Windows PowerShell 5.1 misreads other
+# characters in files without a BOM, so symbols are built from character codes below.
 
 $ErrorActionPreference = 'Continue'
 $RepoUrl    = 'https://github.com/us-urvin/claude-gh-accounts'
 $MapFile    = Join-Path $HOME '.claude-gh-accounts'
 $BlockStart = '# >>> claude-gh-accounts >>>'
 $BlockEnd   = '# <<< claude-gh-accounts <<<'
+$TotalSteps = 6
 
-function Step($n, $m) { Write-Host ''; Write-Host "== Step ${n}: $m ==" -ForegroundColor Cyan }
-function Ok($m)   { Write-Host "  [ok] $m" -ForegroundColor Green }
-function Info($m) { Write-Host "  $m" }
-function Warn($m) { Write-Host "  [!] $m" -ForegroundColor Yellow }
-function Fail($m) { Write-Host "  [x] $m" -ForegroundColor Red; throw 'Setup stopped. Fix the problem above, then run the script again.' }
+# ================================================================ Look & feel
+function U([int[]]$codes) { return -join ($codes | ForEach-Object { [char]$_ }) }
+# Windows Terminal and VS Code show every symbol; the classic console gets look-alikes that always render
+$fancy = [bool]($env:WT_SESSION -or $env:TERM_PROGRAM -eq 'vscode')
+if ($fancy) {
+    $S = @{ Ok = U 0x2714; X = U 0x2718; Warn = U 0x25B2; Arrow = U 0x279C; In = U 0x203A; Heart = U 0x2665; Dot = U 0x25CF
+            On = U 0x25A0; Off = U 0x25A1; TL = U 0x256D; TR = U 0x256E; BL = U 0x2570; BR = U 0x256F; H = U 0x2500; V = U 0x2502 }
+} else {
+    $S = @{ Ok = U 0x221A; X = U 0x00D7; Warn = U 0x25B2; Arrow = U 0x2192; In = U 0x00BB; Heart = U 0x2665; Dot = U 0x2022
+            On = U 0x25A0; Off = U 0x25A1; TL = U 0x250C; TR = U 0x2510; BL = U 0x2514; BR = U 0x2518; H = U 0x2500; V = U 0x2502 }
+}
+$C = @{ G1 = 'Magenta'; G2 = 'Magenta'; G3 = 'Blue'; G4 = 'Cyan'; G5 = 'Cyan'; Ok = 'Green'; Warn = 'Yellow'; Bad = 'Red'
+        Accent = 'Cyan'; Q = 'Magenta'; Dim = 'DarkGray'; Bold = 'White'; Card = 'DarkCyan' }
+if ($env:NO_COLOR) { foreach ($k in @($C.Keys)) { $C[$k] = '' } }
+
+# Say 'text' 'Color' 'more text' 'Color' ...   (one line, several colors; '' = default color)
+function Say {
+    for ($i = 0; $i -lt $args.Count; $i += 2) {
+        $t = "$($args[$i])"; $col = if ($i + 1 -lt $args.Count) { $args[$i + 1] } else { '' }
+        if ($col) { Write-Host $t -NoNewline -ForegroundColor $col } else { Write-Host $t -NoNewline }
+    }
+    Write-Host ''
+}
+function Rep($s, $n) { if ($n -le 0) { return '' }; return ($s * $n) }
+function Ok($m)   { Say '  ' '' $S.Ok $C.Ok " $m" '' }
+function Info($m) { Say "    $m" '' }
+function Dim($m)  { Say "    $m" $C.Dim }
+function Warn($m) { Say '  ' '' $S.Warn $C.Warn " $m" '' }
+function Doing($m) { Say '  ' '' $S.Arrow $C.Accent " $m" '' }
+function Fail($m) {
+    Write-Host ''
+    Say "  $($S.X) $m" $C.Bad
+    Say '    Nothing was broken. Fix the problem above, then run the installer again.' $C.Dim
+    Write-Host ''
+    throw 'Setup stopped.'
+}
 function Has($c)  { [bool](Get-Command $c -CommandType Application -ErrorAction SilentlyContinue) }
+function Pretty($p) {
+    $h = $HOME.TrimEnd('\')
+    if ($p -and $p.StartsWith($h, [StringComparison]::OrdinalIgnoreCase)) { return '~' + $p.Substring($h.Length) }
+    return $p
+}
 function Refresh-Path {
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 }
-function Ask($q, $def) {
-    $prompt = if ($def) { "  $q [$def]" } else { "  $q" }
-    $a = Read-Host $prompt
+
+# Step header:  [progress]  STEP 3 OF 6 / Title / plain-words explanation
+function Step($n, $title, $why) {
+    Write-Host ''; Write-Host ''
+    Write-Host '  ' -NoNewline
+    for ($i = 1; $i -le $TotalSteps; $i++) {
+        if ($i -le $n) { Say2 $S.On $C.G2 } else { Say2 $S.Off $C.Dim }
+    }
+    Say "  STEP $n OF $TotalSteps" $C.Dim
+    Say "  $title" $C.Bold
+    if ($why) { Say "  $why" $C.Dim }
+    Write-Host ''
+}
+function Say2($t, $col) { if ($col) { Write-Host $t -NoNewline -ForegroundColor $col } else { Write-Host $t -NoNewline } }
+
+# Cards: a title and a left border (no right border, so long text never breaks it)
+function CardTop($title) { Say "  $($S.TL)$($S.H) " $C.Card $title $C.Bold (' ' + (Rep $S.H (40 - $title.Length))) $C.Card }
+function CardLine { Say2 "  $($S.V)  " $C.Card; Say @args }
+function CardBottom { Say "  $($S.BL)$(Rep $S.H 43)" $C.Card }
+
+# A closed box for short, fixed text
+function Box($col, [string[]]$lines) {
+    $w = 52
+    Say "  $($S.TL)$(Rep $S.H $w)$($S.TR)" $col
+    foreach ($l in $lines) {
+        Say2 "  $($S.V) " $col; Say2 $l $C.Bold; Say2 (' ' * [Math]::Max(0, $w - 1 - $l.Length)) ''; Say $S.V $col
+    }
+    Say "  $($S.BL)$(Rep $S.H $w)$($S.BR)" $col
+}
+
+# Questions
+function Ask($q, $def, $hint) {
+    Write-Host ''
+    Say '  ' '' '?' $C.Q " $q" $C.Bold
+    if ($hint) { Say "    $hint" $C.Dim }
+    Say2 "    $($S.In) " $C.Accent
+    if ($def) { Say2 "[$def] " $C.Dim }
+    $a = Read-Host
     if ([string]::IsNullOrWhiteSpace($a)) { return $def } else { return $a.Trim() }
 }
+function AskYes($q, $def = 'y') {
+    $hint = if ($def -eq 'n') { '(y/N)' } else { '(Y/n)' }
+    Write-Host ''
+    Say2 '  ' ''; Say2 '?' $C.Q; Say2 " $q " $C.Bold; Say2 "$hint " $C.Dim; Say2 "$($S.In) " $C.Accent
+    $a = Read-Host
+    if ([string]::IsNullOrWhiteSpace($a)) { $a = $def }
+    return ($a.Trim() -match '^(y|yes)$')
+}
+
 function GitQuote($s) { return '"' + (("$s" -replace '\\', '\\') -replace '"', '\"') + '"' }
-function AskYes($q, $def = 'y') { return ((Ask "$q (y/n)" $def) -match '^(y|yes)$') }
 function Winget-Install($id, $name) {
-    if (-not (Has winget)) { Fail "$name is missing and winget isn't available. Install $name yourself, then run this script again." }
-    Info "Installing $name (a permission window may pop up; click Yes)..."
+    if (-not (Has winget)) { Fail "$name is missing and winget isn't available. Install $name yourself, then run the installer again." }
+    Doing "Installing $name (a permission window may pop up - click Yes)"
     winget install --id $id -e --source winget --accept-package-agreements --accept-source-agreements
     Refresh-Path
 }
@@ -36,61 +121,79 @@ function Winget-Install($id, $name) {
 # (This happens if you run the setup from inside a "claude" session.)
 Remove-Item Env:GH_TOKEN, Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
 
-Write-Host 'Claude Code setup with automatic GitHub account switching' -ForegroundColor Cyan
-Info 'Answer the questions as they come. You can stop with Ctrl+C and run this again later.'
+# ================================================================ Welcome
+# Logo drawn with half blocks: T = upper half, L = lower half, # = full block
+$logo = @(
+    @('LTT #   LTL # # #TL ##T    LT  #L#', $C.G1),
+    @('TLL #LL #T# TL# #LT #LL TT TL# # #', $C.G2),
+    @('LTL LTT LTT LTL # # #L # T#T LTT',   $C.G4),
+    @('#T# TLL TLL TLT TL# # T#  #  L##',   $C.G5)
+)
+Write-Host ''
+foreach ($row in $logo) {
+    Say ('   ' + ($row[0].Replace('T', (U 0x2580)).Replace('L', (U 0x2584)).Replace('#', (U 0x2588)))) $row[1]
+}
+Write-Host ''
+Say '   One computer. Many GitHub accounts. Zero mix-ups.' $C.Bold
+Write-Host ''
+Dim 'This sets things up so each of your GitHub accounts (work, personal, ...)'
+Dim 'gets its own folder. Work inside a folder and everything - commits, pushes'
+Dim 'and Claude Code - automatically uses the right account.'
+Write-Host ''
+Dim 'Takes about 3 minutes. Just answer the questions; press Enter to accept'
+Dim 'the suggestion in [brackets]. Stop any time with Ctrl+C - nothing breaks.'
 
-# ---------------------------------------------------------------- Step 1
-Step 1 'Checking your system'
+# ================================================================ Step 1
+Step 1 'Checking your computer' "Making sure we know what we're working with."
 $arch = $env:PROCESSOR_ARCHITECTURE
 try {
     $cpu = (Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1).Architecture
     if ($cpu -eq 12) { $arch = 'ARM64' } elseif ($cpu -eq 9) { $arch = 'x64' }
 } catch { }
-Ok "Windows, $arch, PowerShell $($PSVersionTable.PSVersion)"
+Ok "Windows on $arch, PowerShell $($PSVersionTable.PSVersion)"
 
-# ---------------------------------------------------------------- Step 2
-Step 2 'Git'
 if (-not (Has git)) { Winget-Install 'Git.Git' 'Git' }
-if (-not (Has git)) { Fail 'Git still not found. Close this window, open a new PowerShell and run the script again.' }
-Ok (git --version)
+if (-not (Has git)) { Fail 'Git still not found. Close this window, open a new PowerShell window and run the installer again.' }
+Say '  ' '' $S.Ok $C.Ok ' Git is ready ' '' "($((git --version) -replace '^git version ', ''))" $C.Dim
 
-# ---------------------------------------------------------------- Step 3
-Step 3 'GitHub CLI (gh)'
+# ================================================================ Step 2
+Step 2 'GitHub CLI' "GitHub's official tool. It logs you in and keeps your passwords safe."
 function Gh-Version {
     $line = gh --version 2>$null | Select-Object -First 1
     if ($line -match '(\d+)\.(\d+)\.(\d+)') { return [version]"$($Matches[1]).$($Matches[2]).$($Matches[3])" }
     return [version]'0.0.0'
 }
 if (-not (Has gh)) { Winget-Install 'GitHub.cli' 'GitHub CLI' }
-if (-not (Has gh)) { Fail 'GitHub CLI still not found. Close this window, open a new PowerShell and run the script again.' }
+if (-not (Has gh)) { Fail 'GitHub CLI still not found. Close this window, open a new PowerShell window and run the installer again.' }
 if ((Gh-Version) -lt [version]'2.40.0') {
-    Info 'Your gh is too old for multiple accounts (needs 2.40+). Updating...'
+    Warn 'Your GitHub CLI is too old for multiple accounts (needs 2.40+). Updating it.'
     winget upgrade --id GitHub.cli -e --source winget --accept-package-agreements --accept-source-agreements
     Refresh-Path
 }
 if ((Gh-Version) -lt [version]'2.40.0') { Fail 'GitHub CLI 2.40 or newer is needed. Get it from https://cli.github.com' }
-Ok "GitHub CLI $(Gh-Version)"
+Say '  ' '' $S.Ok $C.Ok ' GitHub CLI is ready ' '' "($(Gh-Version))" $C.Dim
 
-# ---------------------------------------------------------------- Step 4
-Step 4 'Claude Code'
+# ================================================================ Step 3
+Step 3 'Claude Code' "Your AI coding assistant, installed with Anthropic's official installer."
 $localBin = Join-Path $HOME '.local\bin'
 function First-Claude { Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
 function Test-Claude($path) {
     try { & $path --version *> $null; return ($LASTEXITCODE -eq 0) } catch { return $false }
 }
+function Claude-Version($path) { try { return "$(& $path --version 2>$null | Select-Object -First 1)" } catch { return '' } }
 $c = First-Claude
 if ($c -and (Test-Claude $c.Source)) {
-    Ok "Claude Code works: $($c.Source)"
+    Say '  ' '' $S.Ok $C.Ok ' Claude Code is ready ' '' "($(Claude-Version $c.Source))" $C.Dim
 } else {
-    if ($c) { Warn "Found a Claude Code install that doesn't run: $($c.Source). Reinstalling." }
+    if ($c) { Warn "Found a Claude Code install that doesn't start ($($c.Source)). Reinstalling it." }
     if (Has npm) {
         $npmHas = npm ls -g @anthropic-ai/claude-code 2>$null | Out-String
         if ($npmHas -match 'claude-code') {
-            Info 'Removing old npm copy...'
+            Doing 'Removing an old copy installed with npm'
             npm uninstall -g @anthropic-ai/claude-code 2>$null | Out-Null
         }
     }
-    Info 'Installing Claude Code with the official installer...'
+    Doing 'Installing Claude Code'
     $ps = (Get-Process -Id $PID).Path
     & $ps -NoProfile -ExecutionPolicy Bypass -Command 'irm https://claude.ai/install.ps1 | iex'
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -102,18 +205,23 @@ if ($c -and (Test-Claude $c.Source)) {
     $c = First-Claude
     if (-not $c) { Fail "Claude Code didn't install correctly. Copy the messages above and ask for help." }
     if (-not (Test-Claude $c.Source)) {
-        Fail "A broken Claude Code file is still in the way: $($c.Source). Delete it (as Administrator), then run this script again."
+        Fail "A broken Claude Code file is in the way: $($c.Source). Delete it (as Administrator), then run the installer again."
     }
-    Ok "Claude Code installed: $($c.Source)"
+    Say '  ' '' $S.Ok $C.Ok ' Claude Code installed ' '' "($(Claude-Version $c.Source))" $C.Dim
 }
 
-# ---------------------------------------------------------------- Step 5
-Step 5 'Your GitHub accounts'
-Info 'Each GitHub account gets its own folder. Any repo inside that folder automatically'
-Info 'uses that account for commits, clones, pushes and pull requests.'
-Info ''
-Write-Host '  IMPORTANT: when the browser opens to log in, check it is signed in to the' -ForegroundColor Yellow
-Write-Host '  RIGHT GitHub account. If not, sign out there first or paste the link in a private window.' -ForegroundColor Yellow
+# ================================================================ Step 4
+Step 4 'Your GitHub accounts' "Each account gets its own folder. That's the whole trick."
+CardTop 'How it works'
+CardLine '~\code\work       ' '' $S.Arrow $C.Accent '  your work account' ''
+CardLine '~\code\personal   ' '' $S.Arrow $C.Accent '  your personal account' ''
+CardLine ''
+CardLine "Every project inside a folder uses that folder's account." $C.Dim
+CardBottom
+Write-Host ''
+Say '  ' '' $S.Warn $C.Warn ' Heads-up:' $C.Bold " when your browser opens to log in, make sure it's signed in to" ''
+Say '    the ' '' 'right' $C.Bold ' GitHub account. If not, sign out on github.com first, or paste' ''
+Info 'the link into a private/incognito window.'
 
 # Map file format, one line per account:  folder|github-user|label
 $map = New-Object System.Collections.ArrayList
@@ -131,11 +239,16 @@ function Save-Map {
     [IO.File]::WriteAllText($MapFile, ((@($lines) -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
 }
 function GitDir($f) { return ($f -replace '\\', '/') + '/' }
-$firstRun = ($map.Count -eq 0)
-if ($map.Count) {
-    Info ''; Info 'Already set up:'
-    foreach ($e in $map) { Info "  $($e.Folder)  ->  $($e.User)" }
+function Show-Accounts($title, $bullet) {
+    CardTop $title
+    foreach ($e in $map) {
+        $lbl = if ($e.Label) { $e.Label } else { '?' }
+        CardLine "$bullet " $C.Ok ('{0,-10} {1,-20} ' -f $lbl, $e.User) '' (Pretty $e.Folder) $C.Dim
+    }
+    CardBottom
 }
+$firstRun = ($map.Count -eq 0)
+if ($map.Count) { Write-Host ''; Show-Accounts 'Already set up' $S.Arrow }
 
 # gh's own login can point all of github.com at gh's *active* account, placed after (and
 # overriding) the per-folder settings. Remove it; the per-folder helpers replace it.
@@ -145,40 +258,59 @@ function Remove-GlobalGhHelper {
     if ($old -match 'gh(\.exe)?[''"]?\s+auth\s+git-credential') {
         git config --global --unset-all credential.https://github.com.helper
         git config --global --unset-all credential.https://gist.github.com.helper 2>$null
-        Ok 'Removed a global gh git setting that would override the per-folder accounts'
+        Ok 'Removed an old GitHub CLI setting that would have mixed up your accounts'
     }
 }
 
 $defaultName = git config --global user.name 2>$null
-$another = if ($map.Count) { AskYes 'Add or update an account now?' 'y' } else { $true }
+$another = if ($map.Count) { AskYes 'Add or change an account now?' 'y' } else { $true }
+$count = 0
 
 while ($another) {
+    $count++
     Write-Host ''
-    $label = ((Ask 'Short name for this account (e.g. work, personal, client1)' '') + '').ToLower() -replace '[^a-z0-9-]', ''
-    if (-not $label) { Warn 'Please use letters or numbers.'; continue }
-    $user = Ask 'GitHub username for this account' ''
-    if ("$user" -notmatch '^[A-Za-z0-9][A-Za-z0-9-]{0,38}$') { Warn "That doesn't look like a GitHub username (letters, numbers and dashes only)."; continue }
-    $folder = Ask "Folder for this account's repos" (Join-Path $HOME "code\$label")
+    Say "  $(Rep $S.H 3) ACCOUNT $count $(Rep $S.H 40)" $C.G3
+
+    $label = ((Ask 'Give this account a nickname' '' 'One word, e.g.  work,  personal,  client1') + '').ToLower() -replace '[^a-z0-9-]', ''
+    if (-not $label) { Warn 'Please use letters or numbers.'; $count--; continue }
+
+    $user = Ask "What's the GitHub username for '$label'?" '' 'The name you log in with, shown at github.com/<username>'
+    if ("$user" -notmatch '^[A-Za-z0-9][A-Za-z0-9-]{0,38}$') { Warn "That doesn't look like a GitHub username (letters, numbers and dashes only)."; $count--; continue }
+
+    $folder = Ask "Which folder should hold the '$label' projects?" (Join-Path $HOME "code\$label") "It will be created if it doesn't exist yet"
     if ($folder.StartsWith('~')) { $folder = $HOME + $folder.Substring(1) }
-    if ($folder.Contains('|')) { Warn "The folder name can't contain '|'."; continue }
+    if ($folder.Contains('|')) { Warn "The folder name can't contain '|'."; $count--; continue }
     try {
         $folder = [IO.Path]::GetFullPath($folder).TrimEnd('\')
-    } catch { Warn "That folder name isn't valid: $($_.Exception.Message)"; continue }
-    if ($folder.Length -le 3 -or $folder -eq $HOME.TrimEnd('\')) { Warn "Pick a dedicated folder, not $folder itself."; continue }
+    } catch { Warn "That folder name isn't valid: $($_.Exception.Message)"; $count--; continue }
+    if ($folder.Length -le 3 -or $folder -eq $HOME.TrimEnd('\')) { Warn "Please pick a folder of its own, not $folder itself."; $count--; continue }
     try {
         New-Item -ItemType Directory -Force -Path $folder -ErrorAction Stop | Out-Null
-    } catch { Warn "Couldn't create that folder: $($_.Exception.Message)"; continue }
-    $name  = Ask 'Name to show on commits' $defaultName
-    if (-not $name) { Warn "A name is required (git won't commit without one)."; continue }
-    $email = Ask 'Email for commits (one that belongs to this GitHub account)' ''
-    if ("$email" -notmatch '^\S+@\S+$') { Warn 'Please enter a valid email address.'; continue }
+    } catch { Warn "Couldn't create that folder: $($_.Exception.Message)"; $count--; continue }
+
+    $name = Ask 'Your name, as it should appear on your work' $defaultName 'Shown next to every change you save (a "commit")'
+    if (-not $name) { Warn "A name is needed - Git won't save changes without one."; $count--; continue }
+
+    $email = Ask 'Email for this account' '' 'Use an email added to this GitHub account (github.com/settings/emails)'
+    if ("$email" -notmatch '^\S+@\S+$') { Warn 'Please enter a valid email address.'; $count--; continue }
+
+    Write-Host ''
+    CardTop 'Quick check'
+    CardLine ('{0,-10}' -f 'Nickname') $C.Dim $label $C.Bold
+    CardLine ('{0,-10}' -f 'GitHub')   $C.Dim $user $C.Bold
+    CardLine ('{0,-10}' -f 'Folder')   $C.Dim (Pretty $folder) $C.Bold
+    CardLine ('{0,-10}' -f 'Commits')  $C.Dim $name $C.Bold " <$email>" $C.Dim
+    CardBottom
+    if (-not (AskYes 'Does this look right?' 'y')) { Info "No problem - let's try that account again."; $count--; continue }
+    Write-Host ''
 
     gh auth token --user $user *> $null
     if ($LASTEXITCODE -eq 0) {
         Ok "Already logged in to GitHub as $user"
     } else {
         while ($true) {
-            Info "Logging in as '$user'. Follow the prompts; a browser will open."
+            Doing "Logging in as $user. A browser window will open - follow the steps there."
+            Dim '(Choose "Login with a web browser" and copy the one-time code it shows.)'
             gh auth login --hostname github.com --git-protocol https --web
             gh auth token --user $user *> $null
             if ($LASTEXITCODE -eq 0) { Ok "Logged in as $user"; break }
@@ -186,9 +318,9 @@ while ($another) {
             # GitHub usernames aren't case sensitive, but gh stores them exactly as GitHub spells them
             if ($who -and ("$who".Trim() -eq $user)) { $user = "$who".Trim(); Ok "Logged in as $user"; break }
             if (-not $who) { $who = 'unknown' }
-            Warn "That login was for '$who', not '$user'."
-            if ($who -ne 'unknown') { Info "(To remove the wrong one later: gh auth logout --user $who)" }
-            if (-not (AskYes 'Try logging in again?' 'y')) { Warn "Skipped. Run this script again to finish logging in as $user."; break }
+            Warn "That login was for '$who', not '$user'. The browser was signed in to a different account."
+            if ($who -ne 'unknown') { Dim "(To remove that login later: gh auth logout --user $who)" }
+            if (-not (AskYes 'Try logging in again?' 'y')) { Warn "Skipped. Run the installer again to finish logging in as $user."; break }
         }
     }
 
@@ -207,30 +339,31 @@ while ($another) {
         $oldCfg = git config --global --get "includeIf.gitdir/i:$(GitDir $e.Folder).path" 2>$null
         if ($e.Label -eq $label -or "$oldCfg" -eq $cfgFwd) {
             git config --global --unset-all "includeIf.gitdir/i:$(GitDir $e.Folder).path" 2>$null
-            Info "No longer using $($e.Folder) for '$label'"
+            Info "$($e.Folder) no longer uses '$label'"
             [void]$map.Remove($e)
         }
     }
     git config --global --replace-all "includeIf.gitdir/i:$(GitDir $folder).path" $cfgFwd
     [void]$map.Add([pscustomobject]@{ Folder = $folder; User = $user; Label = $label })
     Save-Map
-    Ok "Repos in $folder will use GitHub '$user' and commit as $name <$email>"
+    Ok "Repos in $(Pretty $folder) will now use $user"
 
     Remove-GlobalGhHelper
     $another = AskYes 'Add another GitHub account?' 'n'
 }
-if ($map.Count -eq 0) { Fail "No accounts set up yet. Run this script again when you're ready." }
+if ($map.Count -eq 0) { Fail "No accounts are set up yet. Run the installer again when you're ready." }
 Remove-GlobalGhHelper
 
-# ---------------------------------------------------------------- Step 6
-Step 6 'Installing the smart "claude" command'
+# ================================================================ Step 5
+Step 5 'Turning on auto-switching' 'Teaching the claude command to pick the right account by itself.'
 $launcher = @'
 # >>> claude-gh-accounts >>>
 # Starts Claude Code with the GitHub account that matches the current folder.
-# Managed by install.ps1: run that script again to change accounts.
+# Managed by claude-gh-accounts (https://github.com/us-urvin/claude-gh-accounts):
+# run the installer again to change accounts.
 function claude {
     $exe = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $exe) { Write-Host 'Claude Code was not found. Run install.ps1 again.' -ForegroundColor Red; return }
+    if (-not $exe) { Write-Host 'Claude Code was not found. Run the claude-gh-accounts installer again.' -ForegroundColor Red; return }
     $map  = Join-Path $HOME '.claude-gh-accounts'
     $here = (Get-Location).ProviderPath.TrimEnd('\') + '\'
     $user = $null; $best = 0
@@ -272,7 +405,7 @@ foreach ($p in $profiles) {
     if ($content) { $content += "`r`n`r`n" }
     $content += ($launcher -replace "`r?`n", "`r`n") + "`r`n"
     [IO.File]::WriteAllText($p, $content, [Text.Encoding]::UTF8)
-    Ok "Added to $p"
+    Ok "Added the smart claude command to $(Pretty $p)"
 }
 
 # Let PowerShell load the profile (Windows blocks scripts by default)
@@ -284,35 +417,38 @@ foreach ($s in 'MachinePolicy', 'UserPolicy', 'CurrentUser', 'LocalMachine') {
 if ($effective -in 'Restricted', 'AllSigned') {
     try {
         Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force -ErrorAction Stop
-        Ok 'Allowed PowerShell to load your profile (RemoteSigned, for your user only)'
+        Ok 'Allowed PowerShell to load the smart command (for your user only)'
     } catch {
-        Warn "Couldn't allow profile scripts: $($_.Exception.Message)"
-        Warn 'Your company may control this setting. Ask IT, or the "claude" command will not auto-switch accounts.'
+        Warn "Couldn't allow PowerShell to load the smart command: $($_.Exception.Message)"
+        Warn 'Your company may control this setting. Ask IT - until then "claude" will not switch accounts by itself.'
     }
 }
 
-# ---------------------------------------------------------------- Step 7
-Step 7 'All done'
-Info 'Your accounts:'
-foreach ($e in $map) { Info "  $($e.Folder)  ->  GitHub: $($e.User)" }
-$firstFolder = $map[0].Folder
-Info ''
-Info 'What to do now:'
-Info '1. Close this window and open a NEW PowerShell window.'
-Info '2. Put repos inside the matching folder, for example:'
-Info "     cd `"$firstFolder`""
-Info '     git clone https://github.com/OWNER/REPO.git'
-Info '3. Go into the repo and type:  claude'
-Info '   You will see "GitHub account: <name>". The first time, Claude asks you to log in.'
-Info '4. To double-check, ask Claude to run:  gh api user --jq .login'
-Info ''
-Info 'Repos outside these folders keep working exactly as before.'
-Info 'Run this script again any time to add an account or change a folder.'
-
-# ---------------------------------------------------------------- Star
+# ================================================================ Step 6
+Step 6 'All done!' ''
+Box $C.Ok @('', "  $($S.Ok)  You're all set! Nice work.", '')
 Write-Host ''
-Write-Host '  * Did this save you time? A GitHub star helps other people find it:' -ForegroundColor Yellow
-Info "  $RepoUrl"
+Show-Accounts 'Your accounts' $S.Dot
+
+$first = $map[0]
+Write-Host ''
+CardTop 'What to do now'
+CardLine '1' $C.G2 '  Close this window and open a ' '' 'new' $C.Bold ' PowerShell window.' ''
+CardLine "   (This one doesn't know about the new setup yet.)" $C.Dim
+CardLine '2' $C.G2 '  Go to an account folder:   ' '' "cd $(Pretty $first.Folder)" $C.Accent
+CardLine '3' $C.G2 '  Download a project:        ' '' 'git clone https://github.com/OWNER/REPO.git' $C.Accent
+CardLine '4' $C.G2 '  Go into it and type:       ' '' 'claude' $C.Accent
+CardLine "   You'll see " '' "GitHub account: $($first.User)" $C.Accent " - that's it working!" ''
+CardBottom
+Write-Host ''
+Dim 'Projects outside these folders keep working exactly as before.'
+Dim 'Run the installer again any time to add or change an account.'
+
+# ================================================================ Star
+Write-Host ''
+Say '  ' '' $S.Heart $C.Bad '  Enjoying it? A star on GitHub helps other people find it.' $C.Bold
+Say "     $RepoUrl" $C.Accent
 if ($firstRun -and (AskYes 'Open it in your browser now?' 'y')) {
-    try { Start-Process $RepoUrl -ErrorAction Stop } catch { Info "Couldn't open a browser here. Copy the link above instead." }
+    try { Start-Process $RepoUrl -ErrorAction Stop; Ok 'Thank you!' } catch { Info "Couldn't open a browser here. Copy the link above instead." }
 }
+Write-Host ''
