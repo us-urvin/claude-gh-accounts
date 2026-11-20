@@ -23,7 +23,24 @@ $T = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid())
 $bin = Join-Path $T 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 Set-Content (Join-Path $bin 'claude.cmd') @('@echo GH_TOKEN=%GH_TOKEN%', '@echo ARGS=%*') -Encoding ascii
-Set-Content (Join-Path $bin 'gh.cmd') '@if "%4"=="nobody" (exit /b 1) else (echo TOKEN-for-%4)' -Encoding ascii
+Set-Content (Join-Path $bin 'gh.cmd') @(
+    '@echo off',
+    'if "%1"=="auth" if "%2"=="token" goto token',
+    'if "%1"=="auth" if "%2"=="status" goto status',
+    'if "%1"=="api" if "%2"=="user" goto user',
+    'exit /b 0',
+    ':token',
+    'if "%4"=="nobody" exit /b 1',
+    'echo TOKEN-for-%4',
+    'exit /b 0',
+    ':status',
+    'echo   + Logged in to github.com account sam (keyring)',
+    'echo   X Failed to log in to github.com account old (default)',
+    'echo   + Logged in to github.com account al-home (keyring)',
+    'exit /b 0',
+    ':user',
+    'echo {"id":12345,"login":"sam","name":"Sam Smith","email":null}',
+    'exit /b 0') -Encoding ascii
 # Same fake for git's credential helper, which runs in Git for Windows' sh (it can't run .cmd files)
 [IO.File]::WriteAllText((Join-Path $bin 'gh'), (@(
     '#!/bin/sh',
@@ -133,6 +150,23 @@ try {
         Put-AccountsLast
         Check 'after the fix, the folder account wins'   'username=alice password=TOKEN-for-alice' (& $fillAt $inside)
         Check 'outside folders: gh setting still works'  'username=active-user password=TOKEN-active' (& $fillAt $outside)
+
+        Write-Host 'Smart defaults (fewer questions)'
+        foreach ($fn in 'Get-LoggedInUsers', 'Get-GitHubProfile', 'Get-ExistingAccount') {
+            $code = [regex]::Match($src, "(?s)function $fn[ (].*?\r?\n\}").Value
+            Check "$fn found" $true ([bool]$code)
+            . ([scriptblock]::Create($code))
+        }
+        Check 'finds accounts logged in on this computer' 'sam al-home' (@(Get-LoggedInUsers) -join ' ')
+        $gp = Get-GitHubProfile 'sam'
+        Check 'name comes from the GitHub profile'       'Sam Smith' $gp.Name
+        Check 'private email -> GitHub no-reply address' '12345+sam@users.noreply.github.com' $gp.Email
+        $ex = Get-ExistingAccount 'ALICE'
+        Check 're-run: remembers nickname (any case)'    'work' $ex.Label
+        Check 're-run: remembers folder'                 "$T\code\work" $ex.Folder
+        Check 're-run: remembers name and email'         'Alice "Al" A <alice@example.com>' "$($ex.Name) <$($ex.Email)>"
+        Check 're-run: remembers SSH'                    $true ([bool]$ex.Ssh)
+        Check 'new account: nothing pre-filled'          '' ((Get-ExistingAccount 'nobody-new').Values -join '')
     } finally {
         $env:GIT_CONFIG_GLOBAL = $oldGlobal; $env:GIT_CONFIG_NOSYSTEM = $oldNoSys
     }

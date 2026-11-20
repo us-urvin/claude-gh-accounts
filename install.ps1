@@ -388,8 +388,45 @@ function Ensure-WorkflowScope($u) {
     }
 }
 
+# ---- Smart defaults, so re-runs and new accounts are mostly "press Enter"
+# GitHub accounts already logged in to gh on this computer
+function Get-LoggedInUsers {
+    $out = gh auth status --hostname github.com 2>&1 | ForEach-Object { "$_" }
+    foreach ($l in $out) { if ($l -match 'Logged in to github\.com account ([A-Za-z0-9-]+)') { $Matches[1] } }
+}
+# Name and email from the GitHub profile. When the email is private, use the account's
+# no-reply address (<id>+<login>@users.noreply.github.com), which GitHub always accepts.
+function Get-GitHubProfile($u) {
+    $result = @{ Name = ''; Email = '' }
+    $tok = gh auth token --user $u 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $tok) { return $result }
+    $saved = $env:GH_TOKEN
+    # Parse the JSON here (no --jq): PowerShell 5.1 and 7 pass quotes to programs differently
+    try { $env:GH_TOKEN = "$tok".Trim(); $json = gh api user 2>$null | Out-String } finally { $env:GH_TOKEN = $saved }
+    try { $o = $json | ConvertFrom-Json } catch { return $result }
+    if (-not $o) { return $result }
+    if ($o.name) { $result.Name = "$($o.name)" }
+    if ($o.email) { $result.Email = "$($o.email)" }
+    elseif ($o.id -and $o.login) { $result.Email = "$($o.id)+$($o.login)@users.noreply.github.com" }
+    return $result
+}
+# What's already saved for this GitHub user?
+function Get-ExistingAccount($u) {
+    $ex = @{ Label = ''; Folder = ''; Name = ''; Email = ''; Ssh = '' }
+    $e = $map | Where-Object { $_.User -eq $u } | Select-Object -First 1
+    if (-not $e) { return $ex }
+    $ex.Folder = $e.Folder; $ex.Label = $e.Label
+    $cfgp = git config --global --get "includeIf.gitdir/i:$(GitDir $e.Folder).path" 2>$null
+    if (-not $ex.Label -and $cfgp) { $ex.Label = ($cfgp -split '\.gitconfig-')[-1] }
+    if (-not $cfgp) { $cfgp = Join-Path $HOME ".gitconfig-$($ex.Label)" }
+    $ex.Name  = "$(git config --file $cfgp user.name 2>$null)"
+    $ex.Email = "$(git config --file $cfgp user.email 2>$null)"
+    $ex.Ssh   = "$(git config --file $cfgp core.sshCommand 2>$null)"
+    return $ex
+}
+
 $defaultName = git config --global user.name 2>$null
-$another = if ($map.Count) { AskYes 'Add or change an account now?' 'y' } else { $true }
+$another = if ($map.Count) { AskYes 'Add or change an account now?' 'n' } else { $true }
 $count = 0
 
 while ($another) {
@@ -397,37 +434,19 @@ while ($another) {
     Write-Host ''
     Say "  $(Rep $S.H 3) ACCOUNT $count $(Rep $S.H 40)" $C.G3
 
-    $label = ((Ask 'Give this account a nickname' '' 'One word, e.g.  work,  personal,  client1') + '').ToLower() -replace '[^a-z0-9-]', ''
-    if (-not $label) { Warn 'Please use letters or numbers.'; $count--; continue }
-
-    $user = Ask "What's the GitHub username for '$label'?" '' 'The name you log in with, shown at github.com/<username>'
+    # Suggest an account that's logged in on this computer but not set up yet
+    $loggedIn = @(Get-LoggedInUsers)
+    $suggest = ''
+    foreach ($u in $loggedIn) { if (-not (Get-ExistingAccount $u).Folder) { $suggest = $u; break } }
+    $hint = if ($loggedIn.Count) { "Logged in on this computer: $($loggedIn -join ', ')" } else { 'The name you log in with, shown at github.com/<username>' }
+    $user = Ask 'Which GitHub account?' $suggest $hint
     if ("$user" -notmatch '^[A-Za-z0-9][A-Za-z0-9-]{0,38}$') { Warn "That doesn't look like a GitHub username (letters, numbers and dashes only)."; $count--; continue }
+    $ex = Get-ExistingAccount $user
+    if ($ex.Folder) { Ok "'$user' is already set up - press Enter to keep each answer." }
 
-    $folder = Ask "Which folder should hold the '$label' projects?" (Join-Path $HOME "code\$label") "It will be created if it doesn't exist yet"
-    if ($folder.StartsWith('~')) { $folder = $HOME + $folder.Substring(1) }
-    if ($folder.Contains('|')) { Warn "The folder name can't contain '|'."; $count--; continue }
-    try {
-        $folder = [IO.Path]::GetFullPath($folder).TrimEnd('\')
-    } catch { Warn "That folder name isn't valid: $($_.Exception.Message)"; $count--; continue }
-    if ($folder.Length -le 3 -or $folder -eq $HOME.TrimEnd('\')) { Warn "Please pick a folder of its own, not $folder itself."; $count--; continue }
-    try {
-        New-Item -ItemType Directory -Force -Path $folder -ErrorAction Stop | Out-Null
-    } catch { Warn "Couldn't create that folder: $($_.Exception.Message)"; $count--; continue }
-
-    $name = Ask 'Your name, as it should appear on your work' $defaultName 'Shown next to every change you save (a "commit")'
-    if (-not $name) { Warn "A name is needed - Git won't save changes without one."; $count--; continue }
-
-    $email = Ask 'Email for this account' '' 'Use an email added to this GitHub account (github.com/settings/emails)'
-    if ("$email" -notmatch '^\S+@\S+$') { Warn 'Please enter a valid email address.'; $count--; continue }
-
-    Write-Host ''
-    CardTop 'Quick check'
-    CardLine ('{0,-10}' -f 'Nickname') $C.Dim $label $C.Bold
-    CardLine ('{0,-10}' -f 'GitHub')   $C.Dim $user $C.Bold
-    CardLine ('{0,-10}' -f 'Folder')   $C.Dim (Pretty $folder) $C.Bold
-    CardLine ('{0,-10}' -f 'Commits')  $C.Dim $name $C.Bold " <$email>" $C.Dim
-    CardBottom
-    if (-not (AskYes 'Does this look right?' 'y')) { Info "No problem - let's try that account again."; $count--; continue }
+    $defLabel = if ($ex.Label) { $ex.Label } else { $user.ToLower() -replace '[^a-z0-9-]', '' }
+    $label = ((Ask 'Give this account a nickname' $defLabel 'One word, e.g.  work,  personal,  client1') + '').ToLower() -replace '[^a-z0-9-]', ''
+    if (-not $label) { Warn 'Please use letters or numbers.'; $count--; continue }
     Write-Host ''
 
     gh auth token --user $user *> $null
@@ -450,9 +469,40 @@ while ($another) {
         }
     }
     Ensure-WorkflowScope $user
+    $gp = Get-GitHubProfile $user
+
+    $defFolder = if ($ex.Folder) { $ex.Folder } else { Join-Path $HOME "code\$label" }
+    $folder = Ask "Which folder should hold the '$label' projects?" $defFolder "It will be created if it doesn't exist yet"
+    if ($folder.StartsWith('~')) { $folder = $HOME + $folder.Substring(1) }
+    if ($folder.Contains('|')) { Warn "The folder name can't contain '|'."; $count--; continue }
+    try {
+        $folder = [IO.Path]::GetFullPath($folder).TrimEnd('\')
+    } catch { Warn "That folder name isn't valid: $($_.Exception.Message)"; $count--; continue }
+    if ($folder.Length -le 3 -or $folder -eq $HOME.TrimEnd('\')) { Warn "Please pick a folder of its own, not $folder itself."; $count--; continue }
+    try {
+        New-Item -ItemType Directory -Force -Path $folder -ErrorAction Stop | Out-Null
+    } catch { Warn "Couldn't create that folder: $($_.Exception.Message)"; $count--; continue }
+
+    $defName = if ($ex.Name) { $ex.Name } elseif ($gp.Name) { $gp.Name } else { $defaultName }
+    $name = Ask 'Your name, as it should appear on your work' $defName 'Shown next to every change you save (a "commit")'
+    if (-not $name) { Warn "A name is needed - Git won't save changes without one."; $count--; continue }
+
+    $defEmail = if ($ex.Email) { $ex.Email } else { $gp.Email }
+    $emailHint = if ($defEmail -like '*@users.noreply.github.com') { 'Suggested: your private GitHub address - it keeps your real email hidden' } else { 'Use an email added to this GitHub account (github.com/settings/emails)' }
+    $email = Ask 'Email for this account' $defEmail $emailHint
+    if ("$email" -notmatch '^\S+@\S+$') { Warn 'Please enter a valid email address.'; $count--; continue }
+
+    Write-Host ''
+    CardTop 'Quick check'
+    CardLine ('{0,-10}' -f 'Nickname') $C.Dim $label $C.Bold
+    CardLine ('{0,-10}' -f 'GitHub')   $C.Dim $user $C.Bold
+    CardLine ('{0,-10}' -f 'Folder')   $C.Dim (Pretty $folder) $C.Bold
+    CardLine ('{0,-10}' -f 'Commits')  $C.Dim $name $C.Bold " <$email>" $C.Dim
+    CardBottom
+    if (-not (AskYes 'Does this look right?' 'y')) { Info "No problem - let's try that account again."; $count--; continue }
 
     $sshKey = ''
-    $sshDefault = if (Test-Path (Join-Path $HOME ".ssh\claude-gh-$label")) { 'y' } else { 'n' }
+    $sshDefault = if ($ex.Ssh -or (Test-Path (Join-Path $HOME ".ssh\claude-gh-$label"))) { 'y' } else { 'n' }
     Write-Host ''
     Dim 'Project addresses look like  https://github.com/...  or  git@github.com:...  (SSH).'
     Dim "HTTPS always works. If you're not sure, answer no - you can add SSH later."

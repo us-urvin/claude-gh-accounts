@@ -358,49 +358,69 @@ ensure_workflow_scope() { # $1 = GitHub user
   fi
 }
 
+# ---- Smart defaults, so re-runs and new accounts are mostly "press Enter"
+# GitHub accounts already logged in to gh on this computer
+gh_logged_in_users() {
+  gh auth status --hostname github.com 2>&1 | sed -n 's/.*Logged in to github\.com account \([A-Za-z0-9-]*\).*/\1/p'
+}
+# Name and email from the GitHub profile. When the email is private, use the account's
+# no-reply address (<id>+<login>@users.noreply.github.com), which GitHub always accepts.
+github_profile() { # $1 = user; sets gh_name, gh_email
+  local tok line id login
+  gh_name=""; gh_email=""
+  tok="$(gh auth token --user "$1" 2>/dev/null)" || return 0
+  line="$(GH_TOKEN="$tok" gh api user --jq '[.id, .login, (.name // ""), (.email // "")] | @tsv' 2>/dev/null)" || return 0
+  id="$(printf '%s' "$line" | cut -f1)"; login="$(printf '%s' "$line" | cut -f2)"
+  gh_name="$(printf '%s' "$line" | cut -f3)"; gh_email="$(printf '%s' "$line" | cut -f4)"
+  [ -z "$gh_email" ] && [ -n "$id" ] && [ -n "$login" ] && gh_email="$id+$login@users.noreply.github.com"
+  return 0
+}
+# What's already saved for this GitHub user? Sets ex_label, ex_folder, ex_name, ex_email, ex_ssh
+existing_account() { # $1 = user
+  local f u l cfgp
+  ex_label=""; ex_folder=""; ex_name=""; ex_email=""; ex_ssh=""
+  while IFS='|' read -r f u l; do
+    [ -n "$f" ] && same_user "$u" "$1" && { ex_folder="$f"; ex_label="$l"; break; }
+  done < "$MAP_FILE"
+  [ -z "$ex_folder" ] && return 0
+  cfgp="$(git config --global --get "includeIf.gitdir/i:$ex_folder/.path" 2>/dev/null || true)"
+  [ -z "$ex_label" ] && [ -n "$cfgp" ] && ex_label="${cfgp##*/.gitconfig-}"
+  [ -z "$cfgp" ] && cfgp="$HOME/.gitconfig-$ex_label"
+  ex_name="$(git config --file "$cfgp" user.name 2>/dev/null || true)"
+  ex_email="$(git config --file "$cfgp" user.email 2>/dev/null || true)"
+  ex_ssh="$(git config --file "$cfgp" core.sshCommand 2>/dev/null || true)"
+  return 0
+}
+
 default_name="$(git config --global user.name 2>/dev/null || true)"
 another=0; count=0
-if [ -s "$MAP_FILE" ]; then ask_yes "Add or change an account now?" y && another=1; else another=1; fi
+if [ -s "$MAP_FILE" ]; then ask_yes "Add or change an account now?" n && another=1; else another=1; fi
 
 while [ "$another" -eq 1 ]; do
   count=$((count + 1))
   printf '\n  %s%s ACCOUNT %s %s%s\n' "$G3$B" "$(rep "$H" 3)" "$count" "$(rep "$H" 40)" "$R"
 
-  label="$(ask "Give this account a nickname" "" "One word, e.g.  work,  personal,  client1" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
-  [ -z "$label" ] && { warn "Please use letters or numbers."; count=$((count - 1)); continue; }
-
-  user="$(ask "What's the GitHub username for '$label'?" "" "The name you log in with, shown at github.com/<username>")"
+  # Suggest an account that's logged in on this computer but not set up yet
+  logged_in="$(gh_logged_in_users | tr '\n' ' ' | sed 's/ *$//')"
+  suggest=""
+  for u in $logged_in; do
+    existing_account "$u"; [ -z "$ex_folder" ] && { suggest="$u"; break; }
+  done
+  hint="The name you log in with, shown at github.com/<username>"
+  [ -n "$logged_in" ] && hint="Logged in on this computer: $(printf '%s' "$logged_in" | sed 's/ /, /g')"
+  user="$(ask "Which GitHub account?" "$suggest" "$hint")"
   if ! printf '%s' "$user" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]{0,38})$'; then
     warn "That doesn't look like a GitHub username (letters, numbers and dashes only)."; count=$((count - 1)); continue
   fi
+  existing_account "$user"
+  [ -n "$ex_folder" ] && ok "'$user' is already set up - press Enter to keep each answer."
 
-  folder="$(ask "Which folder should hold the '$label' projects?" "$(pretty "$HOME/code/$label")" "It will be created if it doesn't exist yet")"
-  folder="${folder/#\~/$HOME}"
-  case "$folder" in *'|'*) warn "The folder name can't contain '|'."; count=$((count - 1)); continue ;; esac
-  mkdir -p "$folder" || { warn "Couldn't create $folder"; count=$((count - 1)); continue; }
-  folder="$(cd "$folder" && pwd -P)"  # real path: git matches folders by their real location
-  if [ "$folder" = "/" ] || [ "$folder" = "$HOME" ]; then
-    warn "Please pick a folder of its own, not $(pretty "$folder") itself."; count=$((count - 1)); continue
-  fi
-
-  name="$(ask "Your name, as it should appear on your work" "$default_name" "Shown next to every change you save (a \"commit\")")"
-  [ -z "$name" ] && { warn "A name is needed - Git won't save changes without one."; count=$((count - 1)); continue; }
-
-  email="$(ask "Email for this account" "" "Use an email added to this GitHub account (github.com/settings/emails)")"
-  case "$email" in *?@?*) ;; *) warn "Please enter a valid email address."; count=$((count - 1)); continue ;; esac
+  def_label="$ex_label"
+  [ -z "$def_label" ] && def_label="$(printf '%s' "$user" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
+  label="$(ask "Give this account a nickname" "$def_label" "One word, e.g.  work,  personal,  client1" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
+  [ -z "$label" ] && { warn "Please use letters or numbers."; count=$((count - 1)); continue; }
 
   printf '\n'
-  card_top "Quick check"
-  card_line "$(printf '%-10s' Nickname)$B$label$R"
-  card_line "$(printf '%-10s' GitHub)$B$user$R"
-  card_line "$(printf '%-10s' Folder)$B$(pretty "$folder")$R"
-  card_line "$(printf '%-10s' Commits)$B$name$R $D<$email>$R"
-  card_bottom
-  if ! ask_yes "Does this look right?" y; then
-    info "No problem - let's try that account again."; count=$((count - 1)); continue
-  fi
-  printf '\n'
-
   if gh auth token --user "$user" >/dev/null 2>&1; then
     ok "Already logged in to GitHub as $B$user$R"
   else
@@ -420,9 +440,41 @@ while [ "$another" -eq 1 ]; do
     done
   fi
   ensure_workflow_scope "$user"
+  github_profile "$user"
+
+  def_folder="$HOME/code/$label"; [ -n "$ex_folder" ] && def_folder="$ex_folder"
+  folder="$(ask "Which folder should hold the '$label' projects?" "$(pretty "$def_folder")" "It will be created if it doesn't exist yet")"
+  folder="${folder/#\~/$HOME}"
+  case "$folder" in *'|'*) warn "The folder name can't contain '|'."; count=$((count - 1)); continue ;; esac
+  mkdir -p "$folder" || { warn "Couldn't create $folder"; count=$((count - 1)); continue; }
+  folder="$(cd "$folder" && pwd -P)"  # real path: git matches folders by their real location
+  if [ "$folder" = "/" ] || [ "$folder" = "$HOME" ]; then
+    warn "Please pick a folder of its own, not $(pretty "$folder") itself."; count=$((count - 1)); continue
+  fi
+
+  def_name="${ex_name:-${gh_name:-$default_name}}"
+  name="$(ask "Your name, as it should appear on your work" "$def_name" "Shown next to every change you save (a \"commit\")")"
+  [ -z "$name" ] && { warn "A name is needed - Git won't save changes without one."; count=$((count - 1)); continue; }
+
+  def_email="${ex_email:-$gh_email}"
+  email_hint="Use an email added to this GitHub account (github.com/settings/emails)"
+  case "$def_email" in *@users.noreply.github.com) email_hint="Suggested: your private GitHub address - it keeps your real email hidden" ;; esac
+  email="$(ask "Email for this account" "$def_email" "$email_hint")"
+  case "$email" in *?@?*) ;; *) warn "Please enter a valid email address."; count=$((count - 1)); continue ;; esac
+
+  printf '\n'
+  card_top "Quick check"
+  card_line "$(printf '%-10s' Nickname)$B$label$R"
+  card_line "$(printf '%-10s' GitHub)$B$user$R"
+  card_line "$(printf '%-10s' Folder)$B$(pretty "$folder")$R"
+  card_line "$(printf '%-10s' Commits)$B$name$R $D<$email>$R"
+  card_bottom
+  if ! ask_yes "Does this look right?" y; then
+    info "No problem - let's try that account again."; count=$((count - 1)); continue
+  fi
 
   ssh_key=""
-  ssh_default=n; [ -f "$HOME/.ssh/claude-gh-$label" ] && ssh_default=y
+  ssh_default=n; { [ -n "$ex_ssh" ] || [ -f "$HOME/.ssh/claude-gh-$label" ]; } && ssh_default=y
   printf '\n'
   dim "Project addresses look like  https://github.com/...  or  git@github.com:...  (SSH)."
   dim "HTTPS always works. If you're not sure, answer no - you can add SSH later."

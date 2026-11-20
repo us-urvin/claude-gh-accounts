@@ -11,6 +11,10 @@ All notable changes to this project are listed here. Versions follow [Semantic V
   The installer creates one (or uses yours), trusts GitHub's official host fingerprints, adds the
   key to the right GitHub account with your OK, checks GitHub recognises it as that account, and
   sets `core.sshCommand` for the account's folder. No host aliases, no remote changes.
+- **Far fewer questions:** re-running defaults to "no changes"; the installer suggests GitHub
+  accounts already logged in on the computer, pre-fills everything for accounts that are already
+  set up, and fills a new account's name and email from its GitHub profile (using the private
+  `@users.noreply.github.com` address when the email isn't public). Mostly just press Enter.
 - README: clearer scope (built for Claude Code in the terminal; web and IDE support coming soon).
 
 ### Fixed

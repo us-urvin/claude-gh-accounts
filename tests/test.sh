@@ -24,6 +24,8 @@ printf '%s\n' '#!/bin/sh' \
   '  "auth token") [ "$4" != "nobody" ] && echo "TOKEN-for-$4" ;;' \
   '  "auth git-credential") [ "$3" = get ] && { echo username=active-user; echo password=TOKEN-active; } ;;' \
   "  \"ssh-key add\") touch '$T/uploaded' ;;" \
+  '  "auth status") printf "  + Logged in to github.com account sam (keyring)\n  X Failed to log in to github.com account old (default)\n  + Logged in to github.com account al-home (keyring)\n" ;;' \
+  '  "api user") printf "12345\tsam\tSam Smith\t\n" ;;' \
   'esac' > "$T/bin/gh"
 # Fake ssh: records how git called it (to check which key is used). For "ssh -T" (the key
 # check) it answers like GitHub once a key was uploaded: "Hi <user>! ..."
@@ -130,6 +132,23 @@ if command -v ssh-keygen >/dev/null 2>&1; then
   FAKE_WHO=someone-else setup_ssh newacct sam >/dev/null 2>&1
   check "SSH setup: refuses a key of another account" "" "$ssh_key"
 fi
+
+echo "Smart defaults (fewer questions)"
+for fn in gh_logged_in_users github_profile existing_account; do eval "$(sed -n "/^$fn() {/,/^}/p" "$SCRIPT")"; done
+eval "$(sed -n '/^same_user() {/p' "$SCRIPT")"
+gh_name="" gh_email="" ex_label="" ex_folder="" ex_name="" ex_email="" ex_ssh=""  # set by the functions above
+check "finds accounts logged in on this computer" "sam al-home" "$(gh_logged_in_users | tr '\n' ' ' | sed 's/ *$//')"
+github_profile sam
+check "name comes from the GitHub profile"        "Sam Smith" "$gh_name"
+check "private email -> GitHub no-reply address"  "12345+sam@users.noreply.github.com" "$gh_email"
+existing_account AL-HOME
+check "re-run: remembers nickname (any case)"     "personal" "$ex_label"
+check "re-run: remembers folder"                  "$T/p" "$ex_folder"
+check "re-run: remembers name and email"          "Al <al@example.org>" "$ex_name <$ex_email>"
+existing_account sam
+check "re-run: remembers SSH"                     "yes" "$([ -n "$ex_ssh" ] && echo yes)"
+existing_account nobody-new
+check "new account: nothing pre-filled"           "" "$ex_label$ex_folder$ex_name$ex_email"
 
 echo
 echo "$pass passed, $failed failed"

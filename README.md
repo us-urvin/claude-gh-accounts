@@ -88,7 +88,7 @@ It takes about **3 minutes**. The installer walks you through everything:
 </p>
 
 1. It installs anything missing (Git, GitHub CLI, Claude Code).
-2. For each account it asks for a **nickname**, the **GitHub username**, a **folder**, and your **name and email**.
+2. For each account it asks which **GitHub account** (suggesting ones you're already logged in to), a **nickname** and a **folder**. Your **name and email** are filled in from your GitHub profile.
 3. It shows a **quick check** so you can confirm, then opens your browser to log in.
 4. If your projects use SSH addresses, it sets up an SSH key for that account too (optional).
 5. Done! **Open a new terminal window**, go into an account folder and type `claude`.
@@ -120,7 +120,7 @@ claude                         # prints "GitHub account: <your work username>"
 git config user.email          # prints your work email
 ```
 
-Want to add another account or move one to a different folder? **Just run the installer again.**
+Want to add another account or move one to a different folder? **Just run the installer again.** It remembers everything: accounts you've set up are pre-filled, accounts already logged in on your computer are suggested, and a new account's name and email come from its GitHub profile. Most answers are just <kbd>Enter</kbd>.
 
 ## 🧠 How it works
 
